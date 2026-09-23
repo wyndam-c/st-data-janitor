@@ -368,7 +368,10 @@ docker compose restart          # 或：docker restart sillytavern
 > 本地目录不是 git 仓库时，才依次回退到 `raw.githubusercontent.com` → `gh-proxy.com` → `ghfast.top` →
 > `cdn.jsdelivr.net`（最后这个有最长 12 小时缓存，所以排在最后）。拿到整份 CHANGELOG 后，截面出**目标版本那一段**。
 
-### 方式二：重跑一键安装器（幂等，先自动备份）
+### 方式二：重跑一键安装器（重复跑也没事，会先自动备份）
+
+> 安装器是**幂等**的（英文 idempotent）—— 重复执行和只执行一次效果一样，不会越装越乱：
+> 它每次先把旧目录打包成 `*.bak-时间戳.tar.gz`，再覆盖文件。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.sh | bash -s -- --restart

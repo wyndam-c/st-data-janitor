@@ -2,6 +2,15 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.2] — 2026-09-24
+
+### 优化
+
+- **「检查更新」改走 git 通道（更准、更快）**。之前只靠 HTTP 拉 `raw.githubusercontent.com`，国内经常超时，
+  于是误报“已是最新”。现在改为：优先在插件目录里 `git fetch` 后直接读 `origin/plugin-dist` /
+  `origin/ext-dist` / `origin/main` —— 跟酒馆 `git pull` 走**同一条路**，拉得到就查得到，通常 1-3 秒出结果；
+  git 不可用时才退回 HTTP 镜像（raw → gh-proxy → ghfast → jsDelivr，并避开 jsDelivr 的 12h 缓存）。
+
 ## [1.3.1] — 2026-09-24
 
 ### 修复

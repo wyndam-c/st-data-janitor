@@ -2,6 +2,17 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] — 2026-09-24
+
+### 新增
+
+- **扫描 / 清理时弹出进度条窗口**。点「扫描」「试运行」「立即清理」后会弹出模态框，实时显示
+  进度百分比、当前阶段（遍历目录 / 各规则 / 去重比对 / 移入回收站），不再“一片空白干等”。
+- 服务端新增流式接口（NDJSON）：`POST /api/plugins/st-data-janitor/scan/stream`、
+  `.../clean/stream`；核心库 `scan()` / `clean()` / `collectTargets()` / `collectDuplicates()`
+  均支持可选的 `onProgress` 回调（CLI 不用时可忽略）。
+- 前端若遇到不支持流式的旧服务端，会自动退化为“一次性拿结果”，不影响使用。
+
 ## [未发布]
 
 ### 修复

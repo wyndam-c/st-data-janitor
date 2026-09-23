@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.1.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -340,6 +340,10 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
 - **清空回收站**：彻底删除（不可还原）
 - **保存配置**：把规则开关 / 模式 / 间隔写进配置
 
+> 💡 点上面三个「扫描 / 试运行 / 清理」任意一个，都会弹出一个**进度条窗口**，
+> 实时显示百分比与当前阶段（遍历目录 → 逐条规则 → 去重比对 → 移入回收站），
+> 不用再盯着面板干等。
+
 ### 手动 / 自动
 
 - **手动**（默认）：你想清才清。
@@ -380,7 +384,9 @@ node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --dupes --dup-keep
 | GET | `/config` | 读取配置 |
 | POST | `/config` | 保存配置 |
 | POST | `/scan` | 开始扫描（后台跑，结果进 `/status`） |
+| POST | `/scan/stream` | 扫描并**流式**回报进度（NDJSON，前端进度条用） |
 | POST | `/clean` | 开始清理，body：`{ rules?: string[], dryRun?: boolean }` |
+| POST | `/clean/stream` | 清理并流式回报进度（同上） |
 | GET | `/trash` | 回收站批次列表 |
 | POST | `/restore` | 还原某一批，body：`{ batch }` |
 | POST | `/empty-trash` | 清空回收站，body：`{ keepDays? }` |

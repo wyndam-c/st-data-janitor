@@ -9,7 +9,9 @@
  *   GET  /config        读取配置
  *   POST /config        保存配置
  *   POST /scan          开始扫描（后台跑，结果进 /status）
+ *   POST /scan/stream   扫描并**流式**回报进度（NDJSON，供前端进度条用）
  *   POST /clean         开始清理  body: { rules?: string[], dryRun?: boolean }
+ *   POST /clean/stream  清理并流式回报进度（同上）
  *   GET  /trash         回收站批次列表
  *   POST /restore       还原批次  body: { batch }
  *   POST /empty-trash   清空回收站（body 可带 { keepDays }）
@@ -26,7 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.1.0',
+    version: '1.2.0',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -86,6 +88,52 @@ function runJob(kind, fn) {
     });
 }
 
+/**
+ * 跑一个任务并把进度**流式**写回前端（NDJSON：每行一个 JSON 事件）。
+ * 事件：{type:'start'} → {type:'progress',phase,...}* → {type:'result'} → {type:'done'}
+ * 出错时：{type:'error'}。任务结束后把报告存进 job.lastReport（/status 也能看到）。
+ */
+function streamJob(res, kind, makeFn) {
+    if (job.running) {
+        res.status(409).json({ ok: false, error: `已有任务在跑（${job.kind}），请稍候` });
+        return;
+    }
+    job.running = true; job.kind = kind; job.startedAt = new Date().toISOString(); job.error = null; job.finishedAt = null;
+
+    res.status(200);
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');   // 告诉 nginx 别缓冲
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+    let aborted = false;
+    res.on('close', () => { aborted = true; });
+    const send = (obj) => {
+        if (aborted) return;
+        try {
+            res.write(JSON.stringify(obj) + '\n');
+            if (typeof res.flush === 'function') res.flush();   // 绕过 compression 缓冲
+        } catch { /* 连接断了就算了 */ }
+    };
+
+    send({ type: 'start', kind, at: job.startedAt });
+    setImmediate(() => {
+        try {
+            const report = makeFn((ev) => send({ type: 'progress', ...ev }));
+            job.lastReport = { kind, at: job.startedAt, ...report };
+            send({ type: 'result', report: job.lastReport });
+        } catch (e) {
+            job.error = String(e?.message || e);
+            send({ type: 'error', error: job.error });
+        } finally {
+            job.running = false; job.finishedAt = new Date().toISOString();
+            send({ type: 'done', finishedAt: job.finishedAt });
+            try { res.end(); } catch { /* ignore */ }
+        }
+    });
+}
+
 function scheduleAuto(cfg) {
     if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
     const ms = autoIntervalMs(cfg);
@@ -140,6 +188,12 @@ export async function init(router) {
         } catch (e) { res.status(409).json({ ok: false, error: String(e?.message || e) }); }
     });
 
+    // 扫描 + 流式进度（前端弹窗进度条用）
+    router.post('/scan/stream', (_req, res) => {
+        const cfg = loadConfig();
+        streamJob(res, 'scan', (onProgress) => scan(cfg, onProgress));
+    });
+
     router.post('/clean', (req, res) => {
         try {
             const cfg = loadConfig();
@@ -148,6 +202,14 @@ export async function init(router) {
             runJob(dryRun ? 'clean-dry-run' : 'clean', () => clean(cfg, { rules, dryRun }));
             res.json({ ok: true, started: true, dryRun });
         } catch (e) { res.status(409).json({ ok: false, error: String(e?.message || e) }); }
+    });
+
+    // 清理 + 流式进度（同上）
+    router.post('/clean/stream', (req, res) => {
+        const cfg = loadConfig();
+        const rules = Array.isArray(req.body?.rules) ? req.body.rules : null;
+        const dryRun = req.body?.dryRun !== false;
+        streamJob(res, dryRun ? 'clean-dry-run' : 'clean', (onProgress) => clean(cfg, { rules, dryRun, onProgress }));
     });
 
     router.get('/trash', (_req, res) => res.json({ ok: true, trash: safe(() => listTrash(loadConfig())) }));

@@ -351,15 +351,10 @@ st-data-janitor/
 
 ## 📄 开源协议
 
-本项目基于 [MIT License](LICENSE) 开源，Copyright © 2026 白鸦 (wyndam-c)。
+本项目基于 [MIT License](LICENSE) 开源，Copyright © 2026 白鸦（[@wyndam-c](https://github.com/wyndam-c)）。
 
 你可以自由使用、修改、分发（包括商用），只需保留版权声明与许可声明。
 
 ---
 
-## 👤 作者
-
-- **白鸦** —— 想法、需求与验收 ｜ GitHub [@wyndam-c](https://github.com/wyndam-c)
-- **小草** —— 代码与文档协助 🌱
-
-有问题欢迎提 Issue。
+有问题欢迎提 [Issue](https://github.com/wyndam-c/st-data-janitor/issues) 或 PR。

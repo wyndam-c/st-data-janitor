@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.5.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.5.1-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -97,7 +97,11 @@
 <SillyTavern>/.janitor-trash/<批次时间戳>/manifest.json
 ```
 
-- **彻底删除**——直接 `unlink`，**不进回收站、不可恢复**；按钮会变成红色并需**再点一次**确认。
+- **彻底删除**——直接 `unlink`，**不进回收站、不可恢复**。**要两步**：
+  1. 面板会**先强制跑一次试运行**，把「会删什么」按规则列出来（多少项 / 多大）；
+  2. 再弹一个确认框（红色按钮）等你点「确认彻底删除」。
+  > 服务端也卡了这道关：**没先试运行就直接扔 `permanent: true` 会被拒**（返回 400，提示先试运行）；
+  > 试运行结果有效期 15 分钟、且只对同一批目标（同一 `rels` / 同一规则范围）有效。
   没把握就别选这个（至少先点「试运行」看看会动什么）。
 
 回收站模式下：
@@ -362,7 +366,8 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
   - 底部实时显示「已选 N 项 / X MB」；清理完会自动重扫，列表自己刷新
   - 安全：服务端会拿勾选路径跟**本次扫描结果取交集**，不在里面的（比如过期路径）一律跳过
 - **试运行清理**：列出「如果清理会动哪些文件」
-- **立即清理**：真的清 —— 会弹窗选「**移入回收站**（可还原）」或「**彻底删除**（需点两次确认）」
+- **立即清理**：真的清 —— 会弹窗选「**移入回收站**（可还原）」或「**彻底删除**」
+  （选彻底删除会**先自动试运行一次**，再让你确认）
 - **清空回收站**：彻底删除（不可还原）
 - **保存配置**：把规则开关 / 模式 / 间隔写进配置
 - **检查更新**：面板顶部显示当前版本；点一下就去比对新版。已是最新→提示「无需更新」；
@@ -414,7 +419,7 @@ node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --dupes --dup-keep
 | POST | `/scan` | 开始扫描（后台跑，结果进 `/status`；`rules[id].items` 里含 `name/dir/type/size`） |
 | POST | `/scan/stream` | 扫描并**流式**回报进度（NDJSON，前端进度条用） |
 | POST | `/clean` | 开始清理，body：`{ rules?: string[], rels?: string[], dryRun?: boolean, permanent?: boolean }` |
-| POST | `/clean/stream` | 清理并流式回报进度（同上）。带 `rels` = **只清选中的那些**（返回里有 `notFoundCount`）；`permanent: true` = **彻底删除**（不进回收站） |
+| POST | `/clean/stream` | 清理并流式回报进度（同上）。带 `rels` = **只清选中的那些**（返回里有 `notFoundCount`）；`permanent: true` = **彻底删除**（必须先跑过一次 `dryRun: true`，否则 400） |
 | GET | `/trash` | 回收站批次列表 |
 | POST | `/restore` | 还原某一批，body：`{ batch }` |
 | POST | `/empty-trash` | 清空回收站，body：`{ keepDays? }` |

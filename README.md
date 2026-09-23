@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.6.1-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.7.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -52,9 +52,11 @@
   「**移入回收站**（可还原）」还是「**彻底删除**（不可恢复）」；选彻底删除会**先自动跑一次试运行**再让你确认，
   服务端也卡了这道关（没试运行过直接发 `permanent` 会被拒）。
 - 🧰 **一键安装（分平台）**：`install.sh`（Linux / macOS / NAS / WSL）、`install.ps1` + `install.cmd`（Windows 可双击）、
-  `install-docker.sh`（Docker 容器）—— 自动探测酒馆目录、备份旧版本、顺手检查 `enableServerPlugins`。
+  `install-docker.sh`（Docker 容器）、**`install-termux.sh`（手机 / 安卓 / Termux，含 proot-distro）**
+  —— 自动探测酒馆目录、备份旧版本、顺手检查 `enableServerPlugins`。
 - 🧩 **前端扩展能在酒馆里直接装**：扩展 → 安装扩展 → URL 填仓库地址，**分支填 `ext-dist`**。
-- 🪧 **面板自带安装引导**：服务端插件没装时，面板会直接告诉你，并给一行**可复制的安装命令** + 「重新检测」按钮。
+- 🪧 **面板自带安装引导**：服务端插件没装时，面板会直接告诉你，并给一行**可复制的安装命令** + 「重新检测」按钮；
+  它会按**酒馆所在机器**选命令（Windows / Linux·NAS / **手机 Termux**）——不看浏览器的脸色：插件在时由服务端上报系统，装前端时先按浏览器猜。
 - 🛡️ **硬保护**：`_storage/`（账号库）、`cookie-secret.txt`、`.gitkeep`、`node_modules/`、`.git/` 永不触碰。
 - 📦 **旧备份按聊天分组**：保留「每个聊天最新 N 份」，不会因为某个聊天刷得勤就把别的聊天的备份挤光。
 - 🔌 **零第三方运行时依赖**：服务端插件只用 Node 内置模块（外加 SillyTavern 自带的 express）。
@@ -196,6 +198,27 @@ curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/insta
 # 或指定容器名 / 容器内路径： bash install-docker.sh sillytavern /home/node/app default-user --dry-run
 ```
 
+**📱 手机（安卓 / Termux）** —— 手机上跑酒馆一般是用 Termux，装法和 Linux 一样一行搞定：
+
+```bash
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-termux.sh | bash
+```
+
+它会自动找到 `~/SillyTavern`、`/sdcard/SillyTavern`，连 **proot-distro** 里的酒馆也能找；顺手帮你：申请 Termux 唤醒锁（防安卓杀后台）、
+装好插件和扩展、检查 `enableServerPlugins`。常用参数：
+
+```bash
+... | bash -s -- --fix-config --restart   # 装好顺手开配置 + 重启酒馆（认得出 pm2 / proot / start.sh）
+... | bash -s -- --autostart              # 写一个 Termux:Boot 开机自启脚本（需装 Termux:Boot 应用）
+... | bash -s -- --deps                   # 缺 node/curl/tar 就 pkg install 装上
+... | bash -s -- --no-wake-lock           # 不要唤醒锁
+... | bash -s -- --dry-run                # 只演习
+```
+
+> 手机上常记三件事：**①** 别在 Termux 里按「退出」，切到后台没事（脚本会帮你 `termux-wake-lock`）；
+> **②** 更新/卸载把上面命令的 `install-termux.sh` 照样跑一遍即可（加 `--uninstall` 就是卸载）；
+> **③** 酒馆放在 `/sdcard` 上容易被系统杀，建议放 `~/SillyTavern`。
+
 ### 方式二：在酒馆里直接装「前端扩展」（酒馆自带的安装界面）
 
 酒馆的**扩展管理**支持填仓库链接装扩展（它接受一个可选的分支名），本项目的扩展文件就在 `ext-dist` 分支根目录，可以直接装：
@@ -290,10 +313,16 @@ cd "$ST" && npm start         # 或你平时用的启动方式（PM2 / systemd /
 
 ```bash
 pkg update && pkg upgrade
-pkg install -y git nodejs-lts
+pkg install -y git nodejs-lts curl
 ```
 
-3. 拷插件（Termux 里的酒馆通常在 `~/SillyTavern`）：
+3. **一键装（推荐）**：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-termux.sh | bash -s -- --fix-config --restart
+```
+
+想手动拷也行（Termux 里的酒馆通常在 `~/SillyTavern`）：
 
 ```bash
 cd ~/SillyTavern
@@ -310,8 +339,10 @@ nano ~/SillyTavern/config.yaml   # 加一行 enableServerPlugins: true
 
 手机的坑：
 
-- **Termux 里没有 `sudo`** → 别用 `install.sh`，按上面手拷就行。
-- 跑之前先 `termux-wake-lock`，否则屏幕一黑系统就把 Termux 冻死，插件也不会跑。
+- **Termux 里没有 `sudo`** → 用 **`install-termux.sh`**（它就是给手机写的，全程不需要 sudo）；老脚本
+  `install.sh` 不带 sudo 时可能因为权限/路径差异出问题，手机上优先用手机版。
+- 跑之前先 `termux-wake-lock`，否则屏幕一黑系统就把 Termux 冻死，插件也不会跑（`install-termux.sh` 会自动帮你加）。
+- 想开机自启：`... | bash -s -- --autostart`（写一个 Termux:Boot 脚本，需再装「Termux:Boot」应用）。
 - 手机存储紧张的话，把回收站保留天数 `trashKeepDays` 调小（默认 7 天），或定期点「清空回收站」。
 - 想看文件：用支持 root/Android 目录的文件管理器（如 Material Files）打开 `/data/data/com.termux/files/home/`。
 
@@ -377,6 +408,12 @@ docker compose restart          # 或：docker restart sillytavern
 curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.sh | bash -s -- --restart
 ```
 
+**手机（Termux）上**换成手机版（同样幂等）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-termux.sh | bash -s -- --restart
+```
+
 它会重新下载最新发布覆盖两半，旧目录先打包成 `*.bak-时间戳.tar.gz`，`--restart` 能认出的启动方式会顺手重启。
 （只更新一半：`--plugin-only` / `--ext-only`）
 
@@ -436,6 +473,9 @@ bash install.sh --st /path/to/SillyTavern --uninstall
 # 没留脚本的话：
 curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.sh | bash -s -- --uninstall
 ```
+
+**手机（Termux）**：同一条命令换上手机版脚本即可 ——
+`curl -fsSL .../main/install-termux.sh | bash -s -- --uninstall`
 
 两个目录会被重命名成 `st-data-janitor.removed-<时间戳>`，重启酒馆后就干净了；确认没问题再手动删掉那两份：
 
@@ -650,6 +690,7 @@ st-data-janitor/
 │   ├── flow.png             # 工作流程图
 │   └── screenshot-panel.jpg # 扩展面板实拍截图
 ├── install.sh               # 一键安装：Linux / macOS / NAS / WSL
+├── install-termux.sh        # 一键安装：手机 / 安卓 / Termux（含 proot-distro）
 ├── install.ps1              # 一键安装：Windows（PowerShell）
 ├── install.cmd              # Windows 双击入口（会自动拿 install.ps1）
 ├── install-docker.sh        # 酒馆跑在 Docker 容器里时用

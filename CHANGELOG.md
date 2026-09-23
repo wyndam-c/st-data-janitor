@@ -2,6 +2,30 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.7.0] — 2026-09-24
+
+### 新增
+
+- 📱 **手机（安卓 / Termux）一键安装器 `install-termux.sh`** —— 在 Termux 里贴一行就能装：
+
+  ```bash
+  pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-termux.sh | bash
+  ```
+
+  - 专门为手机环境写：**全程不需要 `sudo`**，自动找 `~/SillyTavern`、`/sdcard/SillyTavern`，
+    连 **proot-distro** 各个发行版里的酒馆也能翻出来。
+  - 保活：自动 `termux-wake-lock`（防安卓杀后台）；`--autostart` 可写一个 **Termux:Boot** 开机自启脚本。
+  - 重启：认得出 **pm2 / proot-distro / `start.sh` / `node server.js`**，重启后还会主动探端口（HTTP 200/302/401 才算起来）。
+  - 其他参数与 Linux 版一致：`--fix-config`、`--deps`（缺 node/curl/tar 就 `pkg install`）、`--uninstall`、`--dry-run`、`--wake-lock / --no-wake-lock`。
+- 🪧 **面板安装引导卡会按「酒馆所在机器」选命令**（Windows / Linux·NAS / 手机 Termux）：
+  插件在时看**服务端上报的系统**（`/status` 新增 `env`：`platform` / `arch` / `node` / `termux`），
+  拿不到（插件还没装）就先按浏览器 UA 猜——避免了「用手机浏览器看 NAS 上的酒馆，却被发手机安装命令」这类误判。
+
+### 文档
+
+- README：安装章节新增「📱 手机（安卓 / Termux）」一行装与常用参数；Android 分步教程同步改写为
+  推荐 `install-termux.sh`、手动拷文件作为备选；🔄 更新 / 🗑️ 卸载 两章补上手机版命令；特性与目录结构同步。
+
 ## [1.6.1] — 2026-09-24
 
 ### 文档

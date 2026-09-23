@@ -10,8 +10,8 @@
  *   POST /config        保存配置
  *   POST /scan          开始扫描（后台跑，结果进 /status）
  *   POST /scan/stream   扫描并**流式**回报进度（NDJSON，供前端进度条用）
- *   POST /clean         开始清理  body: { rules?: string[], dryRun?: boolean }
- *   POST /clean/stream  清理并流式回报进度（同上）
+ *   POST /clean         开始清理  body: { rules?: string[], rels?: string[], dryRun?: boolean }
+ *   POST /clean/stream  清理并流式回报进度（同上；带 rels 则只清勾选的那些）
  *   GET  /trash         回收站批次列表
  *   POST /restore       还原批次  body: { batch }
  *   POST /empty-trash   清空回收站（body 可带 { keepDays }）
@@ -41,7 +41,7 @@ const REPO_URL = `https://github.com/${REPO_SLUG}`;
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.3.3',
+    version: '1.4.0',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -211,18 +211,20 @@ export async function init(router) {
         try {
             const cfg = loadConfig();
             const rules = Array.isArray(req.body?.rules) ? req.body.rules : null;
+            const rels = Array.isArray(req.body?.rels) ? req.body.rels.map(String) : null;
             const dryRun = req.body?.dryRun !== false;
-            runJob(dryRun ? 'clean-dry-run' : 'clean', () => clean(cfg, { rules, dryRun }));
-            res.json({ ok: true, started: true, dryRun });
+            runJob(dryRun ? 'clean-dry-run' : 'clean', () => clean(cfg, { rules, rels, dryRun }));
+            res.json({ ok: true, started: true, dryRun, selected: rels ? rels.length : 0 });
         } catch (e) { res.status(409).json({ ok: false, error: String(e?.message || e) }); }
     });
 
-    // 清理 + 流式进度（同上）
+    // 清理 + 流式进度（同上）；body 可带 { rels: [...] } 只清勾选的那些
     router.post('/clean/stream', (req, res) => {
         const cfg = loadConfig();
         const rules = Array.isArray(req.body?.rules) ? req.body.rules : null;
+        const rels = Array.isArray(req.body?.rels) ? req.body.rels.map(String) : null;
         const dryRun = req.body?.dryRun !== false;
-        streamJob(res, dryRun ? 'clean-dry-run' : 'clean', (onProgress) => clean(cfg, { rules, dryRun, onProgress }));
+        streamJob(res, dryRun ? 'clean-dry-run' : 'clean', (onProgress) => clean(cfg, { rules, rels, dryRun, onProgress }));
     });
 
     router.get('/trash', (_req, res) => res.json({ ok: true, trash: safe(() => listTrash(loadConfig())) }));

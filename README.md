@@ -218,6 +218,8 @@ pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-
 > 手机上常记三件事：**①** 别在 Termux 里按「退出」，切到后台没事（脚本会帮你 `termux-wake-lock`）；
 > **②** 更新/卸载把上面命令的 `install-termux.sh` 照样跑一遍即可（加 `--uninstall` 就是卸载）；
 > **③** 酒馆放在 `/sdcard` 上容易被系统杀，建议放 `~/SillyTavern`。
+>
+> 📖 **手机上从零开始（装 Termux → 装酒馆 → 装本插件 → 保活/自启 → 踩坑）请看 [方式四 → 📱 Android（Termux）](#-androidtermux--手机上从零开始)。**
 
 ### 方式二：在酒馆里直接装「前端扩展」（酒馆自带的安装界面）
 
@@ -306,23 +308,48 @@ cd "$ST" && npm start         # 或你平时用的启动方式（PM2 / systemd /
 
 > 🔌 本 README 开头那套「一键更新」（把目录变成 Git 仓库）在 Linux / NAS 上体验最好，推荐搭配使用。
 
-#### 🤖 Android（Termux）
+#### 📱 Android（Termux）—— 手机上从零开始
 
-1. 从 [F-Droid](https://f-droid.org/en/packages/com.termux/) 或 [GitHub Releases](https://github.com/termux/termux-app/releases) 装 **Termux**（Play 商店版已停止维护，别用）。
-2. 装依赖：
+手机上跑酒馆就是“Termux 里跑 Node”。下面从装 Termux 开始，一步步到装好本插件。全程**不需要 root、不需要 sudo**。
+
+**① 装 Termux**
+
+从 [F-Droid](https://f-droid.org/en/packages/com.termux/) 或 [GitHub Releases](https://github.com/termux/termux-app/releases) 下载 APK 安装 —— **别用 Play 商店版**（已停止维护，会各种报错）。
+
+装完先换国内镜像源（不然 `pkg` 慢到想哭），再更新：
 
 ```bash
+termux-change-repo     # 选 Mirror group → 挑一个离你近的源
 pkg update && pkg upgrade
-pkg install -y git nodejs-lts curl
 ```
 
-3. **一键装（推荐）**：
+**② 装依赖**（Node + git + curl，`nano` 是编辑配置用的，可选）
+
+```bash
+pkg install -y git nodejs-lts curl nano
+```
+
+**③ 装 / 启动酒馆**（手机上还没有酒馆的话）
+
+```bash
+git clone https://github.com/SillyTavern/SillyTavern -b release ~/SillyTavern
+cd ~/SillyTavern && bash start.sh        # 首次会自动 npm install，慢的话多等一会儿
+```
+
+跑起来后，**用这台手机自己的浏览器**打开 `http://127.0.0.1:8000`；想在别的设备上看，就查手机局域网 IP（`ip addr | grep 192.168`）然后开 `http://手机IP:8000`。
+
+> 📶 装依赖卡住（npm 下载慢）可以换国内源：`npm config set registry https://registry.npmmirror.com`
+> ⚠️ 32 位老手机会报 `Unsupported platform: android arm LEtime-web` → 先 `pkg install esbuild` 再回到上一步。
+
+**④ 装「数据清洁工」（一键，推荐）**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-termux.sh | bash -s -- --fix-config --restart
 ```
 
-想手动拷也行（Termux 里的酒馆通常在 `~/SillyTavern`）：
+它会自己找到 `~/SillyTavern`（`/sdcard`、proot-distro 里的也认），装好插件和扩展、把 `config.yaml` 的 `enableServerPlugins` 打开、再重启酒馆并探端口确认起来了。
+
+想手动拷也行（就是一个插件目录 + 一个扩展目录）：
 
 ```bash
 cd ~/SillyTavern
@@ -333,18 +360,56 @@ cp ~/stj/plugin/index.mjs       ~/SillyTavern/plugins/st-data-janitor/
 cp ~/stj/plugin/lib/janitor.mjs ~/SillyTavern/plugins/st-data-janitor/lib/
 cp ~/stj/extension/*            ~/SillyTavern/data/default-user/extensions/st-data-janitor/
 nano ~/SillyTavern/config.yaml   # 加一行 enableServerPlugins: true
+# 重启：切回跑酒馆那个会话 Ctrl+C，再 bash start.sh
 ```
 
-4. 重启：`cd ~/SillyTavern && bash start.sh`（先 Ctrl+C 停掉旧进程）。
+**⑤ 保活（手机上的关键一步 🌟）**
 
-手机的坑：
+安卓会为了让后台省电而“冻结”Termux，酒馆和插件跟着一起停。三件事：
 
-- **Termux 里没有 `sudo`** → 用 **`install-termux.sh`**（它就是给手机写的，全程不需要 sudo）；老脚本
-  `install.sh` 不带 sudo 时可能因为权限/路径差异出问题，手机上优先用手机版。
-- 跑之前先 `termux-wake-lock`，否则屏幕一黑系统就把 Termux 冻死，插件也不会跑（`install-termux.sh` 会自动帮你加）。
-- 想开机自启：`... | bash -s -- --autostart`（写一个 Termux:Boot 脚本，需再装「Termux:Boot」应用）。
-- 手机存储紧张的话，把回收站保留天数 `trashKeepDays` 调小（默认 7 天），或定期点「清空回收站」。
-- 想看文件：用支持 root/Android 目录的文件管理器（如 Material Files）打开 `/data/data/com.termux/files/home/`。
+```bash
+termux-wake-lock      # 申请唤醒锁（install-termux.sh 会自动执行；也可以从通知栏点“Acquire wakelock”）
+```
+
+- **别在 Termux 里按“退出”**（`exit`）——按 Home 键切到后台没事。
+- 想重启手机后它自己起来：装一个 **[Termux:Boot](https://f-droid.org/en/packages/com.termux.boot/)** 应用，然后
+  `curl -fsSL .../main/install-termux.sh | bash -s -- --autostart`（写 `~/.termux/boot/stj-start-st.sh`）。
+- 顺手把常用命令做成别名（编辑 `~/.bashrc`）：
+
+```bash
+alias st='cd ~/SillyTavern && bash start.sh'      # 启动酒馆
+alias stup='cd ~/SillyTavern && git pull --rebase --autostash'   # 更新酒馆
+alias pkgup='pkg update && pkg upgrade'          # 更新 Termux
+```
+
+**⑥ 更新 / 卸载本插件**
+
+```bash
+# 更新（幂等，先自动备份）
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-termux.sh | bash -s -- --restart
+# 卸载（只移走，不删）
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-termux.sh | bash -s -- --uninstall
+```
+
+**⑦ 手机上的坑（逐条照做就对了）**
+
+- **Termux 里没有 `sudo`** → 用 **`install-termux.sh`**（专为手机写的，全程不需要 sudo）；老脚本 `install.sh` 在手机上优先不用。
+- **酒馆别放 `/sdcard`**（共享存储）——系统容易杀它，放 `~/SillyTavern` 最稳。需要访问共享存储才用 `termux-setup-storage`。
+- **存储紧张**：在 `config.yaml` 里加几条（官方推荐）：
+
+```yaml
+performance:
+  lazyLoadCharacters: true
+  useDiskCache: false
+backups:
+  chat:
+    enabled: false
+```
+
+  或把回收站保留天数 `trashKeepDays` 调小（默认 7 天），并定期点「清空回收站」。
+- **看文件**：用支持 Android 目录的文件管理器（如 Material Files）打开 `/data/data/com.termux/files/home/`。
+- **插件没反应/面板说没装**：一般就是酒馆没重启，或屏幕熄灭后 Termux 被冻住了——`termux-wake-lock` + 重启酒馆。
+
 
 #### 🐳 Docker（含 NAS 里的 Docker）
 

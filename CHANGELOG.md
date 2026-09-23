@@ -2,6 +2,16 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 文档
+
+- 📱 README 新增**手机（安卓 / Termux）从零开始教程**：「方式四 → Android」部分重写为完整七步 ——
+  装 Termux（含 `termux-change-repo` 换镜像）、装依赖、装/启动酒馆、一键装本插件、
+  **保活与开机自启**（`termux-wake-lock` / Termux:Boot / 常用别名）、更新与卸载、以及手机特有的坑（`/sdcard` 别放酒馆、
+  32 位机报 `Unsupported platform: android arm LEtime-web` 要 `pkg install esbuild`、存储紧张推荐改的 `config.yaml` 几项）。
+- 🖼️ README 的面板实拍图换成新截图（手机浏览器里的真实面板），并加 `?v=2` 破缓存。
+
 ## [1.7.0] — 2026-09-24
 
 ### 新增

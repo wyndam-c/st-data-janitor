@@ -2,6 +2,15 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.1] — 2026-09-24
+
+### 修复
+
+- **「检查更新」在直连 GitHub 不稳定时误报“已是最新”**。国内直连 `raw.githubusercontent.com` 经常超时，
+  现加了**镜像回退**：原生地址超时就换 `cdn.jsdelivr.net`；单个请求超时从 10s 提到 12s。
+- **一键更新的 git 拉取加固**：`git fetch` 加 `http.version=HTTP/1.1` 和大 `http.postBuffer`，
+  失败自动**重试一次**；git / curl / tar 均加了执行超时，不会永久卡住。
+
 ## [1.3.0] — 2026-09-24
 
 ### 新增

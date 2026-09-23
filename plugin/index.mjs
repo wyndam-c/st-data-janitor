@@ -41,7 +41,7 @@ const REPO_URL = `https://github.com/${REPO_SLUG}`;
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.3.0',
+    version: '1.3.1',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -283,13 +283,31 @@ function safe(fn) { try { return fn(); } catch { return []; } }
 
 /* ==================== 更新检查 / 一键更新 ==================== */
 
-async function httpText(url, timeoutMs = 10000) {
+async function httpText(url, timeoutMs = 12000) {
     const res = await fetch(url, {
         headers: { 'User-Agent': 'st-data-janitor', 'Cache-Control': 'no-cache' },
         signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
+}
+
+/** 依次尝试多个镜像（国内直连 raw.githubusercontent.com 经常超时） */
+const MIRRORS = [
+    (b, f) => `https://raw.githubusercontent.com/${REPO_SLUG}/${b}/${f}`,
+    (b, f) => `https://cdn.jsdelivr.net/gh/${REPO_SLUG}@${b}/${f}`,
+];
+
+async function fetchFile(branch, file, timeoutMs = 12000) {
+    let lastErr = null;
+    for (const mk of MIRRORS) {
+        const url = mk(branch, file);
+        try {
+            const text = await httpText(url, timeoutMs);
+            return { text, source: url.includes('jsdelivr') ? 'jsdelivr' : 'raw' };
+        } catch (e) { lastErr = e; }
+    }
+    throw lastErr || new Error('拉取失败');
 }
 
 function parseVer(v) { return String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0); }
@@ -325,8 +343,8 @@ function findExtensionDirs(dataRoot) {
 /** 远端最新版本（读 dist 分支的真实内容——这才是 git pull 会拿到的东西） */
 async function remoteVersions() {
     const [plug, ext] = await Promise.allSettled([
-        httpText(`${RAW}/${DIST_BRANCH.plugin}/index.mjs`).then(s => (s.match(/version:\s*'([^']+)'/) || [])[1] || null),
-        httpText(`${RAW}/${DIST_BRANCH.extension}/manifest.json`).then(s => JSON.parse(s).version || null),
+        fetchFile(DIST_BRANCH.plugin, 'index.mjs').then(r => (r.text.match(/version:\s*'([^']+)'/) || [])[1] || null),
+        fetchFile(DIST_BRANCH.extension, 'manifest.json').then(r => JSON.parse(r.text).version || null),
     ]);
     return {
         plugin: plug.status === 'fulfilled' ? plug.value : null,
@@ -338,7 +356,7 @@ async function remoteVersions() {
 /** 取 CHANGELOG 里某个版本的小节（更新弹窗里显示的“更新内容”） */
 async function changelogFor(ver) {
     try {
-        const txt = await httpText(`${RAW}/main/CHANGELOG.md`);
+        const txt = (await fetchFile('main', 'CHANGELOG.md')).text;
         const re = new RegExp(`^##\\s*\\[${ver.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\][^\\n]*\\n(.*?)(?=^##\\s|\\Z)`, 'ms');
         const m = txt.match(re);
         return m ? m[1].replace(/\n{3,}/g, '\n\n').trim() : '';
@@ -348,9 +366,16 @@ async function changelogFor(ver) {
 async function gitPullDir(dir, branch) {
     const head = async () => (await run('git', ['-C', dir, 'rev-parse', 'HEAD'])).stdout.trim();
     const before = await head();
-    await run('git', ['-C', dir, 'fetch', '--quiet', 'origin']);
-    const tip = (await run('git', ['-C', dir, 'rev-parse', `origin/${branch}`])).stdout.trim();
-    await run('git', ['-C', dir, 'reset', '--hard', tip]);
+    const args = ['-C', dir, '-c', 'http.version=HTTP/1.1', '-c', 'http.postBuffer=524288000'];
+    const opts = { timeout: 180000, maxBuffer: 8 * 1024 * 1024 };
+    let err = null;
+    for (let i = 0; i < 2; i++) {           // GitHub 直连偶尔 TLS 中断，重试一次
+        try { await run('git', [...args, 'fetch', '--quiet', 'origin'], opts); err = null; break; }
+        catch (e) { err = e; }
+    }
+    if (err) throw err;
+    const tip = (await run('git', [...args, 'rev-parse', `origin/${branch}`], opts)).stdout.trim();
+    await run('git', ['-C', dir, 'reset', '--hard', tip], opts);
     const after = await head();
     return { mode: 'git', before, after, changed: before !== after };
 }
@@ -360,8 +385,8 @@ async function tarOverwriteDir(dir, branch) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stj-upd-'));
     try {
         const tgz = path.join(tmp, 'src.tgz');
-        await run('curl', ['-fsSL', `${CODELOAD}/${branch}`, '-o', tgz], { timeout: 60000 });
-        await run('tar', ['-xzf', tgz, '-C', tmp]);
+        await run('curl', ['-fsSL', `${CODELOAD}/${branch}`, '-o', tgz], { timeout: 120000, maxBuffer: 8 * 1024 * 1024 });
+        await run('tar', ['-xzf', tgz, '-C', tmp], { timeout: 120000 });
         const top = fs.readdirSync(tmp).find(n => n !== 'src.tgz');
         if (!top) throw new Error('解压失败');
         fs.cpSync(path.join(tmp, top), dir, { recursive: true, force: true });

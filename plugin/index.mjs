@@ -41,7 +41,7 @@ const REPO_URL = `https://github.com/${REPO_SLUG}`;
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.3.1',
+    version: '1.3.2',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -293,21 +293,67 @@ async function httpText(url, timeoutMs = 12000) {
 }
 
 /** 依次尝试多个镜像（国内直连 raw.githubusercontent.com 经常超时） */
-const MIRRORS = [
+const SOURCES = [
     (b, f) => `https://raw.githubusercontent.com/${REPO_SLUG}/${b}/${f}`,
-    (b, f) => `https://cdn.jsdelivr.net/gh/${REPO_SLUG}@${b}/${f}`,
+    (b, f) => `https://gh-proxy.com/https://raw.githubusercontent.com/${REPO_SLUG}/${b}/${f}`,
+    (b, f) => `https://ghfast.top/https://raw.githubusercontent.com/${REPO_SLUG}/${b}/${f}`,
 ];
+/** jsDelivr 稳但缓存最多 12h，所以放在最后、且晚 1.5s 才出手（避免抢跑到过期内容） */
+const CACHE_SOURCE = (b, f) => `https://cdn.jsdelivr.net/gh/${REPO_SLUG}@${b}/${f}`;
 
-async function fetchFile(branch, file, timeoutMs = 12000) {
-    let lastErr = null;
-    for (const mk of MIRRORS) {
-        const url = mk(branch, file);
-        try {
-            const text = await httpText(url, timeoutMs);
-            return { text, source: url.includes('jsdelivr') ? 'jsdelivr' : 'raw' };
-        } catch (e) { lastErr = e; }
+async function fetchFile(branch, file, timeoutMs = 10000) {
+    const jobs = SOURCES.map(mk => httpText(mk(branch, file), timeoutMs));
+    jobs.push((async () => { await new Promise(r => setTimeout(r, 1500)); return httpText(CACHE_SOURCE(branch, file), timeoutMs); })());
+    try {
+        return { text: await Promise.any(jobs) };
+    } catch (e) {
+        throw (e && e.errors && e.errors[0]) || e;
     }
-    throw lastErr || new Error('拉取失败');
+}
+
+/* ---- git 通道：比 HTTP 镜像更新、更准（取到的就是 git pull 要拿的东西）---- */
+
+async function gitOut(dir, ...args) {
+    const r = await run('git', ['-C', dir, '-c', 'http.version=HTTP/1.1', '-c', 'http.postBuffer=524288000', ...args], { timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
+    return r.stdout;
+}
+
+/** 拉一次远端（失败重试一次，GitHub 直连偶尔 TLS 中断） */
+async function gitFetch(dir) {
+    let err = null;
+    for (let i = 0; i < 2; i++) {
+        try { await gitOut(dir, 'fetch', '--quiet', 'origin'); return null; }
+        catch (e) { err = e; }
+    }
+    return String(err?.stderr || err?.message || err).trim().slice(0, 200);
+}
+
+async function remoteFromGit() {
+    const dir = __dirname;
+    if (!fs.existsSync(path.join(dir, '.git'))) return null;
+    const error = await gitFetch(dir);
+    if (error) return { error };
+    const read = async (ref, file) => { try { return await gitOut(dir, 'show', `${ref}:${file}`); } catch { return null; } };
+    const pluginSrc = await read(`origin/${DIST_BRANCH.plugin}`, 'index.mjs');
+    const extSrc = await read(`origin/${DIST_BRANCH.extension}`, 'manifest.json');
+    const changelog = await read('origin/main', 'CHANGELOG.md');
+    let extension = null;
+    try { extension = JSON.parse(extSrc).version || null; } catch { /* ignore */ }
+    return {
+        plugin: pluginSrc ? (pluginSrc.match(/version:\s*'([^']+)'/) || [])[1] || null : null,
+        extension,
+        changelog,
+        localCommit: (await gitOut(dir, 'rev-parse', 'HEAD')).trim(),
+        remoteCommit: (await gitOut(dir, 'rev-parse', `origin/${DIST_BRANCH.plugin}`)).trim(),
+    };
+}
+
+/** 从 CHANGELOG 文本里抽出某个版本的小节 */
+function extractSection(txt, ver) {
+    if (!txt) return '';
+    const re = new RegExp(`^##\\s*\\[${String(ver).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\][^\\n]*\\n(.*?)(?=^##\\s|$(?![\\s\\S]))`, 'm');
+    const m = txt.match(re);
+    return m ? m[1].replace(/\n{3,}/g, '\n\n').trim() : '';
 }
 
 function parseVer(v) { return String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0); }
@@ -354,12 +400,10 @@ async function remoteVersions() {
 }
 
 /** 取 CHANGELOG 里某个版本的小节（更新弹窗里显示的“更新内容”） */
-async function changelogFor(ver) {
+async function changelogFor(ver, txt = null) {
     try {
-        const txt = (await fetchFile('main', 'CHANGELOG.md')).text;
-        const re = new RegExp(`^##\\s*\\[${ver.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\][^\\n]*\\n(.*?)(?=^##\\s|\\Z)`, 'ms');
-        const m = txt.match(re);
-        return m ? m[1].replace(/\n{3,}/g, '\n\n').trim() : '';
+        const text = txt || (await fetchFile('main', 'CHANGELOG.md')).text;
+        return extractSection(text, ver);
     } catch { return ''; }
 }
 
@@ -407,23 +451,38 @@ async function buildUpdateInfo() {
     const extDirs = findExtensionDirs(cfg.dataRoot);
     const localPlugin = readPluginVersion(__dirname) || info.version;
     const localExt = extDirs.length ? readExtVersion(extDirs[0]) : null;
-    const remote = await remoteVersions();
-    const latest = [remote.plugin, remote.extension].filter(Boolean).sort((a, b) => cmpVer(b, a))[0] || null;
+
+    // 先试 git（最新最准），不行再退 HTTP 镜像
+    const git = await remoteFromGit();
+    let latestPlugin = git?.plugin || null;
+    let latestExtension = git?.extension || null;
+    let changelogText = git?.changelog || null;
+    const errors = [];
+    if (git?.error) errors.push('git: ' + git.error);
+    if (!latestPlugin || !latestExtension) {
+        const http = await remoteVersions();
+        latestPlugin = latestPlugin || http.plugin;
+        latestExtension = latestExtension || http.extension;
+        errors.push(...http.errors);
+    }
+
+    const latest = [latestPlugin, latestExtension].filter(Boolean).sort((a, b) => cmpVer(b, a))[0] || null;
     const current = [localPlugin, localExt].filter(Boolean).sort((a, b) => cmpVer(b, a))[0] || localPlugin;
     const hasUpdate = !!(latest && cmpVer(latest, current) > 0);
     return {
         ok: true,
         current, latest,
         currentPlugin: localPlugin, currentExtension: localExt,
-        latestPlugin: remote.plugin, latestExtension: remote.extension,
+        latestPlugin, latestExtension,
         hasUpdate,
+        git: git ? { mode: 'git', error: git.error || null, localCommit: git.localCommit, remoteCommit: git.remoteCommit } : { mode: 'none' },
         pluginIsGit: fs.existsSync(path.join(__dirname, '.git')),
         extensionDirs: extDirs,
         extensionIsGit: extDirs.map(d => fs.existsSync(path.join(d, '.git'))),
-        notes: hasUpdate ? await changelogFor(latest) : '',
+        notes: hasUpdate ? await changelogFor(latest, changelogText) : '',
         repoUrl: REPO_URL,
         releaseUrl: `${REPO_URL}/releases/latest`,
-        errors: remote.errors,
+        errors,
         checkedAt: new Date().toISOString(),
     };
 }

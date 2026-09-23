@@ -38,7 +38,11 @@
         const text = await res.text();
         let data;
         try { data = JSON.parse(text); } catch { data = { raw: text }; }
-        if (!res.ok) throw new Error(data.error || `${res.status}: ${text.slice(0, 200)}`);
+        if (!res.ok) {
+            const err = new Error(data.error || `${res.status}: ${text.slice(0, 200)}`);
+            err.status = res.status;
+            throw err;
+        }
         return data;
     }
 
@@ -344,6 +348,44 @@
         if (box) box.style.opacity = auto ? '1' : '.5';
     }
 
+    // ---- 服务端插件没装时的引导卡 ----
+    const REPO_URL = 'https://github.com/wyndam-c/st-data-janitor';
+    const RAW_BASE = 'https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main';
+
+    function installCmd() {
+        const ua = `${navigator?.userAgent || ''} ${navigator?.platform || ''}`;
+        if (/win/i.test(ua)) {
+            return `powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -UseB ${RAW_BASE}/install.ps1 -OutFile $env:TEMP\\stj-install.ps1; & $env:TEMP\\stj-install.ps1"`;
+        }
+        return `curl -fsSL ${RAW_BASE}/install.sh | bash`;
+    }
+
+    async function copyText(t) {
+        try { await navigator.clipboard.writeText(t); return true; } catch { /* 退化 */ }
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
+        } catch { return false; }
+    }
+
+    function showSetup(kind, detail) {
+        const box = $el('stj_setup');
+        if (!box) return;
+        if (!kind) { box.style.display = 'none'; return; }
+        $el('stj_setup_title').textContent = kind === 'missing' ? '还差一步：装「服务端插件」' : '连不上服务端插件';
+        $el('stj_setup_msg').innerHTML = kind === 'missing'
+            ? '这个扩展只是<b>前端面板</b>；真正干活的<b>服务端插件</b>还没在酒馆的 <code>plugins/</code> 里。<br>酒馆本身<b>没有「安装服务端插件」的界面</b>，用下面这行命令（自动找路径、装好、备份旧版）最省事：'
+            : `错误：<code>${String(detail || '').slice(0, 200)}</code>`;
+        const steps = $el('stj_setup_steps');
+        if (steps) steps.style.display = kind === 'missing' ? '' : 'none';
+        $el('stj_setup_cmd').textContent = installCmd();
+        box.style.display = 'block';
+    }
+
     async function refresh() {
         try {
             const s = await api('/status');
@@ -354,9 +396,12 @@
             renderReport(s.lastReport);
             renderPreview(s.lastReport);
             renderTrash(s.trash);
+            showSetup(null);
             return s;
         } catch (e) {
-            setStatus(`⚠️ 连不上服务端插件：${e.message}`, 'stj-bad');
+            const missing = e.status === 404;
+            setStatus(missing ? '⚠️ 还没装服务端插件（看下面的安装指引）' : `⚠️ 连不上服务端插件：${e.message}`, 'stj-bad');
+            showSetup(missing ? 'missing' : 'error', e.message);
             return null;
         }
     }
@@ -687,6 +732,23 @@
   </div>
   <div class="inline-drawer-content">
     <div class="stj-status" id="stj_status">加载中…</div>
+    <div class="stj-setup" id="stj_setup" style="display:none">
+      <div class="stj-setup-title" id="stj_setup_title"></div>
+      <div class="stj-setup-msg" id="stj_setup_msg"></div>
+      <div id="stj_setup_steps">
+        <pre class="stj-setup-cmd" id="stj_setup_cmd"></pre>
+        <div class="stj-setup-btns">
+          <span class="menu_button menu_button_small stj-primary" id="stj_setup_copy">复制安装命令</span>
+          <span class="menu_button menu_button_small" id="stj_setup_retry">装好了，重新检测</span>
+        </div>
+        <div class="stj-setup-note">
+          · 国内下载慢？把链接前面加个镜像前缀 <code>https://gh-proxy.com/</code> 再跑。<br>
+          · 不想用命令：下 <code>install.cmd</code>（Windows）或 <code>install.sh</code> 双击/执行也行，脚本会自己找酒馆路径。<br>
+          · 装完<b>重启一次酒馆</b>，回来点「重新检测」；<b>本扩展</b>还能直接在酒馆里装：<br>
+          　扩展 → 安装扩展 → URL 填 <code>${REPO_URL}</code>，分支填 <code>ext-dist</code>。
+        </div>
+      </div>
+    </div>
     <div class="stj-hint">清理时可选 <b>放回收站</b>（可还原）或 <b>彻底删除</b>；默认只「试运行」不真删。</div>
     <div class="stj-row"><label>版本</label>
       <span class="stj-ver" id="stj_ver">v?</span>
@@ -751,6 +813,14 @@
         });
 
         $el('stj_updchk').addEventListener('click', () => checkUpdate(true));
+        $el('stj_setup_copy').addEventListener('click', async () => {
+            const ok = await copyText(installCmd());
+            try { ok ? toastr.success('安装命令已复制，粘到酒馆那台机器的终端里跑') : toastr.warning('复制失败，手动选中命令复制吧'); } catch { /* ignore */ }
+        });
+        $el('stj_setup_retry').addEventListener('click', async () => {
+            const s = await refresh();
+            try { s ? toastr.success('服务端插件在啦 🎉') : toastr.warning('还没检测到，装完记得重启酒馆'); } catch { /* ignore */ }
+        });
         $el('stj_upd_cancel').addEventListener('click', () => closeUpdateModal());
         $el('stj_upd_go').addEventListener('click', () => applyUpdate());
 

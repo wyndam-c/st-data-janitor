@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.5.1-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.6.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -49,7 +49,12 @@
 - 🧪 **默认试运行**：不开真删就只出报告，先看后删。
 - ♻️ **删除进回收站**：同盘 `rename` 秒级完成，带清单文件，可**一键还原**；回收站还能定期自动清空。
 - 🗑️ **要不要进回收站、你自己定**：每次清理（含「清理选中项」）都会弹窗问一句——
-  「**移入回收站**（可还原）」还是「**彻底删除**（不可恢复）」；选彻底删除要**点两次**确认。
+  「**移入回收站**（可还原）」还是「**彻底删除**（不可恢复）」；选彻底删除会**先自动跑一次试运行**再让你确认，
+  服务端也卡了这道关（没试运行过直接发 `permanent` 会被拒）。
+- 🧰 **一键安装（分平台）**：`install.sh`（Linux / macOS / NAS / WSL）、`install.ps1` + `install.cmd`（Windows 可双击）、
+  `install-docker.sh`（Docker 容器）—— 自动探测酒馆目录、备份旧版本、顺手检查 `enableServerPlugins`。
+- 🧩 **前端扩展能在酒馆里直接装**：扩展 → 安装扩展 → URL 填仓库地址，**分支填 `ext-dist`**。
+- 🪧 **面板自带安装引导**：服务端插件没装时，面板会直接告诉你，并给一行**可复制的安装命令** + 「重新检测」按钮。
 - 🛡️ **硬保护**：`_storage/`（账号库）、`cookie-secret.txt`、`.gitkeep`、`node_modules/`、`.git/` 永不触碰。
 - 📦 **旧备份按聊天分组**：保留「每个聊天最新 N 份」，不会因为某个聊天刷得勤就把别的聊天的备份挤光。
 - 🔌 **零第三方运行时依赖**：服务端插件只用 Node 内置模块（外加 SillyTavern 自带的 express）。
@@ -154,15 +159,54 @@
 >   - macOS：`~/Library/Application Support/SillyTavern/`
 >   - Linux：`~/.local/share/SillyTavern/`
 
-### 方式一：安装脚本（推荐，Linux / macOS / NAS）
+### 方式一：一键脚本（最省事，推荐）
+
+脚本会**自己找酒馆目录**（找不到就用 `--st` 指定）、下载最新发布、备份旧版本、顺手检查 `enableServerPlugins`。
+
+**Linux / macOS / NAS（飞牛·群晖·威联通）/ WSL**
 
 ```bash
-git clone https://github.com/wyndam-c/st-data-janitor.git
-cd st-data-janitor
-sudo ./install.sh /path/to/SillyTavern            # 第二个参数=用户名，默认 default-user
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.sh | bash
+# 国内下载慢？把链接前面加镜像前缀：
+# curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.sh | bash
 ```
 
-### 方式二：手动复制（任何平台通用）
+常用的几个参数（完整列表 `--help`）：
+
+```bash
+... | bash -s -- --st /root/SillyTavern      # 指定酒馆目录（默认自动探测）
+... | bash -s -- --fix-config               # 顺手把 config.yaml 的 enableServerPlugins 打开（会备份）
+... | bash -s -- --restart                  # 装完自动重启（认得出 systemd / pm2 / docker 才重启）
+... | bash -s -- --dry-run                  # 只演习，不动任何文件
+... | bash -s -- --uninstall                # 卸载（移走，不删除）
+```
+
+**Windows**：下载 [`install.cmd`](https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.cmd) **双击运行**（它会自己把 `install.ps1` 拉下来），
+或者在 PowerShell 里一行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -UseB https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.ps1 -OutFile $env:TEMP\stj-install.ps1; & $env:TEMP\stj-install.ps1"
+# 常用参数： -StPath "D:\SillyTavern"   -FixConfig   -Restart   -DryRun   -Uninstall
+```
+
+**酒馆跑在 Docker 里**（官方镜像 / linuxserver / NAS 容器套件）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install-docker.sh | bash
+# 或指定容器名 / 容器内路径： bash install-docker.sh sillytavern /home/node/app default-user --dry-run
+```
+
+### 方式二：在酒馆里直接装「前端扩展」（酒馆自带的安装界面）
+
+酒馆的**扩展管理**支持填仓库链接装扩展（它接受一个可选的分支名），本项目的扩展文件就在 `ext-dist` 分支根目录，可以直接装：
+
+> **扩展 → 安装扩展** → URL 填 `https://github.com/wyndam-c/st-data-janitor`，**分支填 `ext-dist`** → 安装 → 刷新页面
+
+⚠️ 但酒馆**没有「安装服务端插件」的界面**（`plugins/` 不在任何可安装目录里），所以**服务端那半仍然要用方式一或方式三**。
+
+> 💡 装好前端后会看到面板上的引导卡：它会告诉你「还差服务端插件」，并给出**可一键复制的安装命令**、装完点「重新检测」即可。
+
+### 方式三：手动复制（任何平台通用）
 
 ```bash
 # 服务端插件
@@ -175,7 +219,7 @@ mkdir -p /path/to/SillyTavern/data/default-user/extensions/st-data-janitor
 cp extension/* /path/to/SillyTavern/data/default-user/extensions/st-data-janitor/
 ```
 
-### 方式三：各平台分步教程
+### 方式四：各平台分步教程（想手动掌控细节的看这里）
 
 > 下面所有命令里的路径都请换成你自己的。核心只有三件事：**把两类文件放对地方 → 开 `enableServerPlugins` → 重启酒馆**。
 
@@ -537,7 +581,10 @@ st-data-janitor/
 │   ├── banner.png           # 头图
 │   ├── flow.png             # 工作流程图
 │   └── screenshot-panel.jpg # 扩展面板实拍截图
-├── install.sh               # 一键安装
+├── install.sh               # 一键安装：Linux / macOS / NAS / WSL
+├── install.ps1              # 一键安装：Windows（PowerShell）
+├── install.cmd              # Windows 双击入口（会自动拿 install.ps1）
+├── install-docker.sh        # 酒馆跑在 Docker 容器里时用
 ├── publish.sh               # 生成/推送 plugin-dist、ext-dist 发布分支
 ├── bump.sh                  # 版本号一次性同步（4 处）+ 体检/提交/发布
 ├── README.md

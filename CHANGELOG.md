@@ -2,6 +2,26 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] — 2026-09-24
+
+### 新增
+
+- 🧰 **分平台一键安装器**（不用再手敲 mkdir/cp）：
+  - `install.sh` —— Linux / macOS / NAS(飞牛·群晖·威联通) / WSL。支持 `curl … | bash` 一行装，
+    自动探测酒馆目录（依次试脚本旁边、`$PWD`、`/root/SillyTavern`、`/opt/…`、`/volume1/…`、`/vol1/…`、`/app` 等），
+    备份旧版本（`*.bak-时间戳.tar.gz`）、检查并按需修正 `config.yaml` 的 `enableServerPlugins`；
+    下载走 **直连 → gh-proxy.com → ghfast.top** 三级回退（国内网络友好）；参数：
+    `--st / --user / --from-dir / --online / --channel / --plugin-only / --ext-only / --fix-config / --restart / --uninstall / --dry-run`。
+    `--restart` 会尝试识别 **systemd / pm2 / docker** 并重启。
+  - `install.ps1` + `install.cmd` —— Windows，**可双击**（cmd 会自动拉 ps1）；自动探测 `%APPDATA%\SillyTavern` 等位置；
+    `-FixConfig` / `-Restart`（先关 node 进程再用 Start.bat 拉起）/ `-Uninstall` / `-DryRun`。
+  - `install-docker.sh` —— 酒馆跑在容器里时用：自动找容器名与容器内路径（`/home/node/app`、`/app`…），`docker cp` 进去。
+- 🧩 **支持在酒馆扩展页直接安装前端扩展**：`扩展 → 安装扩展`，URL 填仓库地址、**分支填 `ext-dist`** 即可。
+  （已核实酒馆 `POST /api/extensions/install` 接受 `branch`，且要求分支根目录有 `manifest.json`，`ext-dist` 正好符合。）
+- 🪧 **面板自带安装引导卡**：检测到服务端插件没装（`/status` 返回 404）时，面板显示「还差一步：装服务端插件」
+  ＋按系统给出**可复制的安装命令**（Windows 自动给 PowerShell 命令）＋「装好了，重新检测」按钮，
+  并说明「酒馆没有装服务端插件的界面」（已翻遍 `src/endpoints/`，确认无此接口）。
+
 ## [1.5.1] — 2026-09-24
 
 ### 新增

@@ -351,9 +351,21 @@
     // ---- 服务端插件没装时的引导卡 ----
     const REPO_URL = 'https://github.com/wyndam-c/st-data-janitor';
     const RAW_BASE = 'https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main';
+    let serverEnv = null;   // 服务端上报的运行环境（/status 的 env）
+
+    // 判断「酒馆是不是跑在手机上」：服务端上报优先（/status.env），拿不到（比如插件还没装）就按浏览器 UA 猜
+    function termuxGuess() {
+        if (serverEnv) return !!serverEnv.termux;
+        const ua = `${navigator?.userAgent || ''} ${navigator?.platform || ''}`;
+        return /android|termux/i.test(ua);
+    }
 
     function installCmd() {
         const ua = `${navigator?.userAgent || ''} ${navigator?.platform || ''}`;
+        // 酒馆跑在手机(Termux)上 → 给手机版安装器（浏览器 UA 可能是电脑的，所以服务端信息优先）
+        if (termuxGuess()) {
+            return `pkg install -y curl && curl -fsSL ${RAW_BASE}/install-termux.sh | bash`;
+        }
         if (/win/i.test(ua)) {
             return `powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr -UseB ${RAW_BASE}/install.ps1 -OutFile $env:TEMP\\stj-install.ps1; & $env:TEMP\\stj-install.ps1"`;
         }
@@ -379,6 +391,7 @@
         $el('stj_setup_title').textContent = kind === 'missing' ? '还差一步：装「服务端插件」' : '连不上服务端插件';
         $el('stj_setup_msg').innerHTML = kind === 'missing'
             ? '这个扩展只是<b>前端面板</b>；真正干活的<b>服务端插件</b>还没在酒馆的 <code>plugins/</code> 里。<br>酒馆本身<b>没有「安装服务端插件」的界面</b>，用下面这行命令（自动找路径、装好、备份旧版）最省事：'
+                + (termuxGuess() ? '<br>📱 <b>看起来酒馆是跑在手机（Termux）上的</b>，下面是手机版命令，在 Termux 里贴即可。' : '')
             : `错误：<code>${String(detail || '').slice(0, 200)}</code>`;
         const steps = $el('stj_setup_steps');
         if (steps) steps.style.display = kind === 'missing' ? '' : 'none';
@@ -389,6 +402,7 @@
     async function refresh() {
         try {
             const s = await api('/status');
+            serverEnv = s.env || null;
             lastScan = s.lastReport || null;
             if (s.running) setStatus(`⏳ 正在${s.kind === 'scan' ? '扫描' : '清理'}…`, 'stj-busy');
             else if (s.error) setStatus(`⚠️ 上次任务出错：${s.error}`, 'stj-bad');

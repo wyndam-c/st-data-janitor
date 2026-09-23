@@ -1,4 +1,4 @@
-![ST Data Janitor · 数据清洁工](assets/banner.png)
+![ST Data Janitor · 数据清洁工](assets/banner.png?v=2)
 
 # ST Data Janitor · 数据清洁工
 

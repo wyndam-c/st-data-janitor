@@ -15,20 +15,33 @@
  *   GET  /trash         回收站批次列表
  *   POST /restore       还原批次  body: { batch }
  *   POST /empty-trash   清空回收站（body 可带 { keepDays }）
+ *   GET  /update-check  检查是否有新版本（返回更新内容）
+ *   POST /update-apply  一键更新（git pull / tar 覆盖 plugin + extension）
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import express from 'express';
 import { DEFAULT_CONFIG, RULE_LABELS, scan, clean, listTrash, restoreTrash, emptyTrash, autoIntervalMs, autoIntervalText } from './lib/janitor.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const run = promisify(execFile);
+
+// ---- 更新检查 -----
+const REPO_SLUG = 'wyndam-c/st-data-janitor';
+const RAW = `https://raw.githubusercontent.com/${REPO_SLUG}`;
+const CODELOAD = `https://codeload.github.com/${REPO_SLUG}/tar.gz/refs/heads`;
+const DIST_BRANCH = { plugin: 'plugin-dist', extension: 'ext-dist' };
+const REPO_URL = `https://github.com/${REPO_SLUG}`;
 
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.2.1',
+    version: '1.3.0',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -214,6 +227,41 @@ export async function init(router) {
 
     router.get('/trash', (_req, res) => res.json({ ok: true, trash: safe(() => listTrash(loadConfig())) }));
 
+    // ---- 检查更新 ----
+    router.get('/update-check', async (_req, res) => {
+        try { res.json(await buildUpdateInfo()); }
+        catch (e) { res.json({ ok: false, error: String(e?.message || e) }); }
+    });
+
+    // ---- 一键更新（plugin + extension 都拉）----
+    router.post('/update-apply', async (_req, res) => {
+        try {
+            const before = await buildUpdateInfo();
+            if (before.latest && !before.hasUpdate) {
+                res.json({ ok: true, upToDate: true, current: before.current, latest: before.latest, message: `已经是最新版本 v${before.current}，无需更新` });
+                return;
+            }
+            const plugin = await updateTarget(__dirname, DIST_BRANCH.plugin);
+            const extensions = [];
+            for (const d of before.extensionDirs) extensions.push(await updateTarget(d, DIST_BRANCH.extension));
+            const after = await buildUpdateInfo();
+            const pluginChanged = !!(plugin && plugin.changed);
+            res.json({
+                ok: true,
+                plugin, extensions,
+                from: before.current, to: after.current,
+                pluginChanged,
+                restartNeeded: pluginChanged,          // 服务端插件要重启酒馆才生效
+                refreshNeeded: true,                   // 前端扩展刷新页面即生效
+                message: pluginChanged
+                    ? `已更新到 v${after.current}。前端扩展刷新页面即生效；服务端插件需要重启酒馆才生效。`
+                    : `已更新到 v${after.current}。刷新页面即生效。`,
+            });
+        } catch (e) {
+            res.json({ ok: false, error: String(e?.message || e) });
+        }
+    });
+
     router.post('/restore', (req, res) => {
         try {
             const out = restoreTrash(loadConfig(), String(req.body?.batch || ''));
@@ -232,6 +280,128 @@ export async function init(router) {
 }
 
 function safe(fn) { try { return fn(); } catch { return []; } }
+
+/* ==================== 更新检查 / 一键更新 ==================== */
+
+async function httpText(url, timeoutMs = 10000) {
+    const res = await fetch(url, {
+        headers: { 'User-Agent': 'st-data-janitor', 'Cache-Control': 'no-cache' },
+        signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+}
+
+function parseVer(v) { return String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0); }
+function cmpVer(a, b) {
+    const x = parseVer(a), y = parseVer(b);
+    for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); }
+    return 0;
+}
+
+/** 从磁盘读版本（插件自己的 index.mjs / 扩展的 manifest.json） */
+function readPluginVersion(dir) {
+    try { const m = fs.readFileSync(path.join(dir, 'index.mjs'), 'utf8').match(/version:\s*'([^']+)'/); return m ? m[1] : null; } catch { return null; }
+}
+function readExtVersion(dir) {
+    try { return JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')).version || null; } catch { return null; }
+}
+
+/** 找出 data 下所有装了本扩展的用户目录 */
+function findExtensionDirs(dataRoot) {
+    const out = [];
+    if (!dataRoot || !fs.existsSync(dataRoot)) return out;
+    const direct = path.join(dataRoot, 'extensions', 'st-data-janitor');
+    if (fs.existsSync(direct)) out.push(direct);
+    try {
+        for (const name of fs.readdirSync(dataRoot)) {
+            const p = path.join(dataRoot, name, 'extensions', 'st-data-janitor');
+            if (fs.existsSync(p)) out.push(p);
+        }
+    } catch { /* ignore */ }
+    return out;
+}
+
+/** 远端最新版本（读 dist 分支的真实内容——这才是 git pull 会拿到的东西） */
+async function remoteVersions() {
+    const [plug, ext] = await Promise.allSettled([
+        httpText(`${RAW}/${DIST_BRANCH.plugin}/index.mjs`).then(s => (s.match(/version:\s*'([^']+)'/) || [])[1] || null),
+        httpText(`${RAW}/${DIST_BRANCH.extension}/manifest.json`).then(s => JSON.parse(s).version || null),
+    ]);
+    return {
+        plugin: plug.status === 'fulfilled' ? plug.value : null,
+        extension: ext.status === 'fulfilled' ? ext.value : null,
+        errors: [plug, ext].filter(r => r.status === 'rejected').map(r => String(r.reason?.message || r.reason)),
+    };
+}
+
+/** 取 CHANGELOG 里某个版本的小节（更新弹窗里显示的“更新内容”） */
+async function changelogFor(ver) {
+    try {
+        const txt = await httpText(`${RAW}/main/CHANGELOG.md`);
+        const re = new RegExp(`^##\\s*\\[${ver.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\][^\\n]*\\n(.*?)(?=^##\\s|\\Z)`, 'ms');
+        const m = txt.match(re);
+        return m ? m[1].replace(/\n{3,}/g, '\n\n').trim() : '';
+    } catch { return ''; }
+}
+
+async function gitPullDir(dir, branch) {
+    const head = async () => (await run('git', ['-C', dir, 'rev-parse', 'HEAD'])).stdout.trim();
+    const before = await head();
+    await run('git', ['-C', dir, 'fetch', '--quiet', 'origin']);
+    const tip = (await run('git', ['-C', dir, 'rev-parse', `origin/${branch}`])).stdout.trim();
+    await run('git', ['-C', dir, 'reset', '--hard', tip]);
+    const after = await head();
+    return { mode: 'git', before, after, changed: before !== after };
+}
+
+/** 非 git 安装（拷文件装的）→ 直接下 dist 分支的 tar 包覆盖 */
+async function tarOverwriteDir(dir, branch) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stj-upd-'));
+    try {
+        const tgz = path.join(tmp, 'src.tgz');
+        await run('curl', ['-fsSL', `${CODELOAD}/${branch}`, '-o', tgz], { timeout: 60000 });
+        await run('tar', ['-xzf', tgz, '-C', tmp]);
+        const top = fs.readdirSync(tmp).find(n => n !== 'src.tgz');
+        if (!top) throw new Error('解压失败');
+        fs.cpSync(path.join(tmp, top), dir, { recursive: true, force: true });
+        return { mode: 'tar', changed: true };
+    } finally {
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+}
+
+async function updateTarget(dir, branch) {
+    if (!fs.existsSync(dir)) return { dir, skipped: '目录不存在' };
+    if (fs.existsSync(path.join(dir, '.git'))) return { dir, ...(await gitPullDir(dir, branch)) };
+    return { dir, ...(await tarOverwriteDir(dir, branch)) };
+}
+
+async function buildUpdateInfo() {
+    const cfg = loadConfig();
+    const extDirs = findExtensionDirs(cfg.dataRoot);
+    const localPlugin = readPluginVersion(__dirname) || info.version;
+    const localExt = extDirs.length ? readExtVersion(extDirs[0]) : null;
+    const remote = await remoteVersions();
+    const latest = [remote.plugin, remote.extension].filter(Boolean).sort((a, b) => cmpVer(b, a))[0] || null;
+    const current = [localPlugin, localExt].filter(Boolean).sort((a, b) => cmpVer(b, a))[0] || localPlugin;
+    const hasUpdate = !!(latest && cmpVer(latest, current) > 0);
+    return {
+        ok: true,
+        current, latest,
+        currentPlugin: localPlugin, currentExtension: localExt,
+        latestPlugin: remote.plugin, latestExtension: remote.extension,
+        hasUpdate,
+        pluginIsGit: fs.existsSync(path.join(__dirname, '.git')),
+        extensionDirs: extDirs,
+        extensionIsGit: extDirs.map(d => fs.existsSync(path.join(d, '.git'))),
+        notes: hasUpdate ? await changelogFor(latest) : '',
+        repoUrl: REPO_URL,
+        releaseUrl: `${REPO_URL}/releases/latest`,
+        errors: remote.errors,
+        checkedAt: new Date().toISOString(),
+    };
+}
 
 export function exit() {
     if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }

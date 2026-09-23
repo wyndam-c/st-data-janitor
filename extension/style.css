@@ -37,6 +37,26 @@
 .stj-table th, .stj-table td { padding: 3px 6px; border-bottom: 1px solid rgba(128,128,128,.25); text-align: left; }
 .stj-table .stj-num { text-align: right; white-space: nowrap; }
 
+/* ---- 扫描预览（名字 / 目录 / 格式 / 大小 + 勾选）---- */
+.stj-preview { margin-top: 10px; }
+.stj-pv-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.stj-pv-title { font-size: .85em; opacity: .85; margin-right: auto; }
+.stj-pv-group { border: 1px solid rgba(128,128,128,.3); border-radius: 8px; margin-bottom: 6px; overflow: hidden; }
+.stj-pv-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 9px; background: rgba(128,128,128,.12); font-size: .85em; }
+.stj-pv-count { opacity: .7; margin-right: auto; }
+.stj-pv-actions { display: flex; gap: 5px; }
+.stj-pv-list { max-height: 240px; overflow: auto; }
+.stj-pv-row { display: flex; align-items: center; gap: 8px; padding: 3px 9px; font-size: .84em; cursor: pointer; margin: 0; }
+.stj-pv-row:hover { background: rgba(128,128,128,.14); }
+.stj-pv-row.on { background: rgba(198, 40, 40, .14); }
+.stj-pv-row input { margin: 0; flex: 0 0 auto; }
+.stj-pv-name { flex: 0 1 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stj-pv-dir { flex: 1 1 auto; min-width: 0; opacity: .55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .92em; }
+.stj-pv-type { flex: 0 0 auto; min-width: 62px; text-align: right; color: #c9a227; }
+.stj-pv-size { flex: 0 0 auto; min-width: 74px; text-align: right; font-variant-numeric: tabular-nums; opacity: .9; }
+.stj-pv-foot { display: flex; align-items: center; gap: 8px; padding: 6px 0 2px; flex-wrap: wrap; }
+.stj-pv-sel { margin-right: auto; font-size: .85em; font-weight: bold; }
+
 .stj-sub { margin: 12px 0 4px; font-weight: bold; opacity: .85; }
 .stj-trash-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .82em; padding: 4px 0; border-bottom: 1px solid rgba(128,128,128,.2); }
 
@@ -81,3 +101,19 @@
 .stj-modal-line #stj_modal_pct { font-size: 1.7em; font-weight: bold; opacity: .95; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
 .stj-modal-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: .78em; opacity: .6; }
 .stj-modal-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+/* ---- 检查更新 ---- */
+.stj-ver { font-weight: bold; }
+.stj-upd-dot { width: 10px; height: 10px; border-radius: 50%; background: #ffb020; box-shadow: 0 0 8px #ffb020aa; flex: 0 0 auto; }
+.stj-upd-sub { font-size: .95em; margin: -8px 0 12px; opacity: .9; }
+.stj-notes {
+  max-height: 42vh; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  background: rgba(128, 128, 128, .12);
+  border: 1px solid rgba(128, 128, 128, .25);
+  border-radius: 8px; padding: 12px 14px; margin: 0;
+  font-size: .85em; line-height: 1.55; font-family: inherit;
+}
+.stj-primary {
+  background: linear-gradient(90deg, #6b4cff, #a56bff) !important;
+  border-color: transparent !important; color: #fff !important;
+}

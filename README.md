@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.3.3-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.4.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -54,6 +54,9 @@
 - 🇨🇳 **中文面板**：设置页里点点点就能用，命令行也能跑。
 - 🩺 **面板内检查更新**：面板里显示当前版本 + 「检查更新」按钮；载入时也会静默查一次。
   有新版本会弹窗列出**更新内容**，可一键「立即更新」（或取消）；已是最新则只提示一句。
+- 🔍 **扫描后可直接挑文件（预览 + 勾选）**：扫描完列出每个文件，显示 **名字 · 所在目录 · 格式 · 大小**，
+  带勾选框；可按规则「全选 / 清空」，也能「全选 / 清空选择」，底部实时显示「已选 N 项 / X」。
+  点「清理选中项」就**只清钩上的那些**（照样先进回收站、可还原）。
 
 > 🔎 更新检查是拿「发布分支（`plugin-dist` / `ext-dist`）」上的版本号跟本地比 ——
 > 也就是**酒馆 `git pull` 真能拿到的东西**，不是仓库 `main` 上的开发中代码。更新走
@@ -345,7 +348,11 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
 
 重启后打开酒馆 → 右侧「扩展」面板 → 找到 **数据清洁工 (Data Janitor)**：
 
-- **扫描**：只统计，不动手
+- **扫描**：只统计，不动手；扫完会在下方列出**逐个文件**（名字 / 目录 / 格式 / 大小）
+- **勾选清理**：在扫描结果里勾选要清的文件 → 底部「清理选中项」（或「试运行选中」先预览）
+  - 「全选 / 清空选择」对全部；每个规则标题右侧也各有「全选 / 清空」
+  - 底部实时显示「已选 N 项 / X MB」；清理完会自动重扫，列表自己刷新
+  - 安全：服务端会拿勾选路径跟**本次扫描结果取交集**，不在里面的（比如过期路径）一律跳过
 - **试运行清理**：列出「如果清理会动哪些文件」
 - **立即清理**：真的清（会先弹确认；文件进回收站）
 - **清空回收站**：彻底删除（不可还原）
@@ -396,10 +403,10 @@ node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --dupes --dup-keep
 | GET | `/status` | 状态 + 配置 + 最近一次报告 + 回收站列表 |
 | GET | `/config` | 读取配置 |
 | POST | `/config` | 保存配置 |
-| POST | `/scan` | 开始扫描（后台跑，结果进 `/status`） |
+| POST | `/scan` | 开始扫描（后台跑，结果进 `/status`；`rules[id].items` 里含 `name/dir/type/size`） |
 | POST | `/scan/stream` | 扫描并**流式**回报进度（NDJSON，前端进度条用） |
-| POST | `/clean` | 开始清理，body：`{ rules?: string[], dryRun?: boolean }` |
-| POST | `/clean/stream` | 清理并流式回报进度（同上） |
+| POST | `/clean` | 开始清理，body：`{ rules?: string[], rels?: string[], dryRun?: boolean }` |
+| POST | `/clean/stream` | 清理并流式回报进度（同上）。带 `rels` = **只清选中的那些**（返回里有 `notFoundCount`） |
 | GET | `/trash` | 回收站批次列表 |
 | POST | `/restore` | 还原某一批，body：`{ batch }` |
 | POST | `/empty-trash` | 清空回收站，body：`{ keepDays? }` |

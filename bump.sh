@@ -139,10 +139,12 @@ echo
 check
 
 if [ "$COMMIT" = 1 ]; then
-  git add -A "$SRC_VER_FILE" "$MANIFEST" "$README" "$CHANGELOG"
+  # 注意：这里必须把**所有**改动一起提交（代码 + 版本号）。只 add 版本文件的话，
+  # publish.sh 从 HEAD 树构建 dist 分支 → 代码改动会被漏掉（v1.4.0 就踩过这个坑）。
+  git add -A
   git commit -q -m "chore(release): v$NEW"
   echo "== 已提交：v$NEW =="
-  git --no-pager log --oneline -1
+  git --no-pager show --stat --oneline -1 | head -20
 fi
 
 if [ "$PUBLISH" = 1 ]; then

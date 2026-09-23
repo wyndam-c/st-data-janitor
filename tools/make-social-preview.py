@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-生成 GitHub「Social preview（链接卡片图）」：1280x640，深紫底 + 白色标题 + 真实面板截图。
+生成「带真实面板截图」的 1280x640 链接卡片图（备选版）。
+
+说明：仓库正式用的 Social preview 卡片是**插画版** `assets/social-1280x640.png`；
+这个脚本产出的是同一套版式、但右侧换成真实面板截图的备选版 `assets/social-1280x640-with-shot.png`。
 只需要 Pillow：  pip install pillow
 用法：  python3 tools/make-social-preview.py
 输出：  assets/social-1280x640.png
@@ -18,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 W, H = 1280, 640
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOT = os.path.join(ROOT, 'assets', 'screenshot-panel.jpg')
-OUT = os.path.join(ROOT, 'assets', 'social-1280x640.png')
+OUT = os.path.join(ROOT, 'assets', 'social-1280x640-with-shot.png')
 
 LATIN_BOLD = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 LATIN = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'

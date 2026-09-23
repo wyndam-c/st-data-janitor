@@ -1,3 +1,5 @@
+![ST Data Janitor · 数据清洁工](assets/banner.png)
+
 # ST Data Janitor · 数据清洁工
 
 > 给 **SillyTavern** 的「数据保洁员」：自动 / 手动清理 `data` 目录里的**无用数据**与**多余数据**。
@@ -225,6 +227,8 @@ node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --old-backups --ke
 
 ## 🧠 工作原理
 
+![工作流程：扫描 → 试运行 → 清理（进回收站） → 还原/清空](assets/flow.png)
+
 ```
 扫描(scan)                          清理(clean)
 ──────────                          ──────────
@@ -284,6 +288,9 @@ st-data-janitor/
 │   ├── manifest.json        # 扩展声明
 │   ├── index.js             # 面板 UI
 │   └── style.css
+├── assets/
+│   ├── banner.png           # 头图
+│   └── flow.png             # 工作流程图
 ├── install.sh               # 一键安装
 ├── README.md
 ├── CHANGELOG.md

@@ -42,7 +42,7 @@ const REPO_URL = `https://github.com/${REPO_SLUG}`;
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.5.0',
+    version: '1.5.1',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -87,6 +87,28 @@ function saveConfig(patch) {
 const job = { running: false, kind: null, startedAt: null, finishedAt: null, lastReport: null, error: null };
 let autoTimer = null;
 let lastAutoRunAt = null;
+
+// ---- 彻底删除的“先试运行”闸门（内存态，重启即清）----
+const DRY_RUN_TTL = 15 * 60 * 1000;
+let lastDryRun = null;   // { key, at, count, bytes }
+const DRY_RUN_REQUIRED = '彻底删除前必须先试运行一次（先看清会删什么）。请在面板里重新操作，或先调用 POST /clean { dryRun: true }。';
+
+function permKey(body) {
+    const rels = Array.isArray(body?.rels) && body.rels.length ? [...body.rels].map(String).sort() : null;
+    const rules = Array.isArray(body?.rules) && body.rules.length ? [...body.rules].map(String).sort() : null;
+    return JSON.stringify({ rels, rules });
+}
+function dryRunOk(body) {
+    return !!(lastDryRun && lastDryRun.key === permKey(body) && (Date.now() - lastDryRun.at) < DRY_RUN_TTL);
+}
+function noteDryRun(body, rep) {
+    const by = Object.values(rep?.byRule || {});
+    lastDryRun = {
+        key: permKey(body), at: Date.now(),
+        count: by.reduce((a, r) => a + (r.count || 0), 0),
+        bytes: by.reduce((a, r) => a + (r.bytes || 0), 0),
+    };
+}
 
 function runJob(kind, fn) {
     if (job.running) throw new Error(`已有任务在跑（${job.kind}），请稍候`);
@@ -215,7 +237,12 @@ export async function init(router) {
             const rels = Array.isArray(req.body?.rels) ? req.body.rels.map(String) : null;
             const permanent = req.body?.permanent === true;
             const dryRun = req.body?.dryRun !== false;
-            runJob(dryRun ? 'clean-dry-run' : (permanent ? 'clean-permanent' : 'clean'), () => clean(cfg, { rules, rels, dryRun, permanent }));
+            if (permanent && !dryRunOk(req.body)) { res.status(400).json({ ok: false, error: DRY_RUN_REQUIRED }); return; }
+            runJob(dryRun ? 'clean-dry-run' : (permanent ? 'clean-permanent' : 'clean'), () => {
+                const rep = clean(cfg, { rules, rels, dryRun, permanent });
+                if (dryRun) noteDryRun(req.body, rep);
+                return rep;
+            });
             res.json({ ok: true, started: true, dryRun, permanent, selected: rels ? rels.length : 0 });
         } catch (e) { res.status(409).json({ ok: false, error: String(e?.message || e) }); }
     });
@@ -227,7 +254,12 @@ export async function init(router) {
         const rels = Array.isArray(req.body?.rels) ? req.body.rels.map(String) : null;
         const permanent = req.body?.permanent === true;
         const dryRun = req.body?.dryRun !== false;
-        streamJob(res, dryRun ? 'clean-dry-run' : (permanent ? 'clean-permanent' : 'clean'), (onProgress) => clean(cfg, { rules, rels, dryRun, permanent, onProgress }));
+        if (permanent && !dryRunOk(req.body)) { res.status(400).json({ ok: false, error: DRY_RUN_REQUIRED }); return; }
+        streamJob(res, dryRun ? 'clean-dry-run' : (permanent ? 'clean-permanent' : 'clean'), (onProgress) => {
+            const rep = clean(cfg, { rules, rels, dryRun, permanent, onProgress });
+            if (dryRun) noteDryRun(req.body, rep);
+            return rep;
+        });
     });
 
     router.get('/trash', (_req, res) => res.json({ ok: true, trash: safe(() => listTrash(loadConfig())) }));

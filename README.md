@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.2.1-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.3.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -52,6 +52,13 @@
 - 📦 **旧备份按聊天分组**：保留「每个聊天最新 N 份」，不会因为某个聊天刷得勤就把别的聊天的备份挤光。
 - 🔌 **零第三方运行时依赖**：服务端插件只用 Node 内置模块（外加 SillyTavern 自带的 express）。
 - 🇨🇳 **中文面板**：设置页里点点点就能用，命令行也能跑。
+- 🩺 **面板内检查更新**：面板里显示当前版本 + 「检查更新」按钮；载入时也会静默查一次。
+  有新版本会弹窗列出**更新内容**，可一键「立即更新」（或取消）；已是最新则只提示一句。
+
+> 🔎 更新检查是拿「发布分支（`plugin-dist` / `ext-dist`）」上的版本号跟本地比 ——
+> 也就是**酒馆 `git pull` 真能拿到的东西**，不是仓库 `main` 上的开发中代码。更新走
+> `git fetch + reset --hard`；若目录不是 git 仓库（拷文件装的），会自动改用发布分支的 tar 包覆盖。
+> 注意：前端扩展**刷新页面**即生效；服务端插件需**重启酒馆**（面板会提醒）。
 
 ---
 
@@ -343,9 +350,11 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
 - **立即清理**：真的清（会先弹确认；文件进回收站）
 - **清空回收站**：彻底删除（不可还原）
 - **保存配置**：把规则开关 / 模式 / 间隔写进配置
+- **检查更新**：面板顶部显示当前版本；点一下就去比对新版。已是最新→提示「无需更新」；
+  有新版本→弹窗列出**更新内容**，可选「立即更新」或「取消」。载入面板时也会自动静默查一次。
 
-> 💡 点上面三个「扫描 / 试运行 / 清理」任意一个，都会弹出一个**进度条窗口**，
-> 实时显示百分比与当前阶段（遍历目录 → 逐条规则 → 去重比对 → 移入回收站），
+> 💡 点上面三个「扫描 / 试运行 / 清理」任意一个，都会弹出一个**全屏居中的进度条弹窗**，
+> 实时显示百分比、当前阶段（遍历目录 → 逐条规则 → 去重比对 → 移入回收站）和「已用时间」，
 > 不用再盯着面板干等。
 
 ### 手动 / 自动
@@ -394,6 +403,8 @@ node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --dupes --dup-keep
 | GET | `/trash` | 回收站批次列表 |
 | POST | `/restore` | 还原某一批，body：`{ batch }` |
 | POST | `/empty-trash` | 清空回收站，body：`{ keepDays? }` |
+| GET | `/update-check` | 检查是否有新版本（返回 `current` / `latest` / `hasUpdate` / `notes`） |
+| POST | `/update-apply` | 一键更新（拉取 `plugin-dist` / `ext-dist` 发布分支） |
 
 ---
 

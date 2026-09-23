@@ -41,7 +41,7 @@ const REPO_URL = `https://github.com/${REPO_SLUG}`;
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.3.2',
+    version: '1.3.3',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -351,7 +351,7 @@ async function remoteFromGit() {
 /** 从 CHANGELOG 文本里抽出某个版本的小节 */
 function extractSection(txt, ver) {
     if (!txt) return '';
-    const re = new RegExp(`^##\\s*\\[${String(ver).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\][^\\n]*\\n(.*?)(?=^##\\s|$(?![\\s\\S]))`, 'm');
+    const re = new RegExp(`^##\\s*\\[${String(ver).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\][^\\n]*\\n(.*?)(?=^##\\s|$(?![\\s\\S]))`, 'ms');
     const m = txt.match(re);
     return m ? m[1].replace(/\n{3,}/g, '\n\n').trim() : '';
 }

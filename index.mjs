@@ -28,7 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.2.0',
+    version: '1.2.1',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 

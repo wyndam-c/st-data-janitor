@@ -142,6 +142,43 @@ cp extension/* /path/to/SillyTavern/data/default-user/extensions/st-data-janitor
 
 ---
 
+### 🔄 让酒馆里能「一键更新」（可选）
+
+SillyTavern 启动时的那套「自动更新插件」要求**插件目录自己就是 Git 仓库根**，
+而本仓库源码是 `plugin/` + `extension/` 两个子目录，对不上。所以仓库额外维护两条**发布分支**，
+把子目录摊平到根：
+
+| 分支 | 根目录内容 | 部署到 |
+| --- | --- | --- |
+| `main` | 完整源码（plugin/ + extension/ + 文档） | 人看的 |
+| `plugin-dist` | `index.mjs`、`lib/` | `plugins/st-data-janitor/` |
+| `ext-dist` | `manifest.json`、`index.js`、`style.css` | `data/<用户名>/extensions/st-data-janitor/` |
+
+部署时**别拷文件**，让目标目录直接变成仓库（公开仓库可匿名拉取，不需要密钥/Token）：
+
+```bash
+# 服务端插件
+cd /path/to/SillyTavern/plugins/st-data-janitor
+git init -b main
+git remote add origin https://github.com/wyndam-c/st-data-janitor.git
+git fetch origin +refs/heads/plugin-dist:refs/remotes/origin/plugin-dist
+git checkout -f -B plugin-dist origin/plugin-dist
+git branch --set-upstream-to=origin/plugin-dist plugin-dist
+
+# 前端扩展（目录换成 data/<用户名>/extensions/st-data-janitor，分支换成 ext-dist）
+```
+
+之后每次酒馆启动，都会自动 `git fetch` + `git pull`
+（由 `config.yaml` → `enableServerPluginsAutoUpdate: true` 控制，默认开）。
+想手动更新也行，进目录 `git pull` 即可。
+
+> ⚠️ **发新版时先跑 `./publish.sh`**（重新生成并推送两条发布分支），否则酒馆拉到的还是旧代码。
+>
+> 💡 如果你在用云同步工具同步 `data` 目录：请把 **`.git`** 加入同步的排除名单。
+> 否则两台机器各自的 Git 元数据会互相打架，生出成堆 ` (conflict_on_…)` 副本。
+
+---
+
 ## 🖥️ 使用
 
 ### 面板操作（推荐）
@@ -295,6 +332,7 @@ st-data-janitor/
 │   ├── flow.png             # 工作流程图
 │   └── screenshot-panel.jpg # 扩展面板实拍截图
 ├── install.sh               # 一键安装
+├── publish.sh               # 生成/推送 plugin-dist、ext-dist 发布分支
 ├── README.md
 ├── CHANGELOG.md
 └── LICENSE                  # MIT

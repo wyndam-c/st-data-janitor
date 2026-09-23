@@ -182,12 +182,60 @@
     async function cleanSelected(dry) {
         const rels = [...previewSel];
         if (!rels.length) { try { toastr.warning('先勾选要清理的文件'); } catch { /* ignore */ } return; }
+        if (!dry) { await startClean({ rels }); return; }   // 真删 → 先问回收站还是彻底删除
         const size = rels.reduce((s, r) => s + (previewSize.get(r) || 0), 0);
-        const msg = dry
-            ? `试运行：检查选中的 ${rels.length} 项（${fmtBytes(size)}）？`
-            : `确定清理选中的 ${rels.length} 项 / ${fmtBytes(size)}？\n\n文件会先移入回收站（可还原），不是永久删除。`;
-        if (!confirm(msg)) return;
-        await streamJob('/clean/stream', { dryRun: dry, rels }, dry ? '正在试运行（选中项）…' : '正在清理（选中项）…', 'clean');
+        if (!confirm(`试运行：检查选中的 ${rels.length} 项（${fmtBytes(size)}）？`)) return;
+        await streamJob('/clean/stream', { dryRun: true, rels }, '正在试运行（选中项）…', 'clean');
+    }
+
+    let lastScan = null;
+
+    // ---- 清理方式询问（回收站 / 彻底删除）----
+    let delResolve = null, delArmTimer = null;
+
+    function askCleanMode(summary) {
+        const m = $el('stj_del_modal');
+        if (!m) return Promise.resolve('trash');
+        $el('stj_del_sub').innerHTML = summary;
+        const perm = $el('stj_del_perm');
+        if (perm) {
+            perm.textContent = '彻底删除';
+            perm.classList.remove('stj-armed');
+            perm.dataset.arm = '';
+        }
+        if (delArmTimer) { clearTimeout(delArmTimer); delArmTimer = null; }
+        m.style.display = 'flex';
+        return new Promise((resolve) => { delResolve = resolve; });
+    }
+
+    function closeCleanMode(pick) {
+        const m = $el('stj_del_modal');
+        if (m) m.style.display = 'none';
+        if (delArmTimer) { clearTimeout(delArmTimer); delArmTimer = null; }
+        const r = delResolve; delResolve = null;
+        if (r) r(pick);
+    }
+
+    /** 真正开始清理：先问一句「放回收站 / 彻底删除」 */
+    async function startClean({ rels = null } = {}) {
+        let summary;
+        if (rels && rels.length) {
+            const size = rels.reduce((s, r) => s + (previewSize.get(r) || 0), 0);
+            summary = `即将清理<b>勾选的 ${rels.length} 项</b> · 共 ${fmtBytes(size)}`;
+        } else {
+            const rep = lastScan && lastScan.kind === 'scan' ? lastScan : null;
+            const en = rep ? Object.values(rep.rules || {}).filter(r => r.enabled) : [];
+            const c = en.reduce((a, r) => a + (r.count || 0), 0);
+            const b = en.reduce((a, r) => a + (r.bytes || 0), 0);
+            summary = c
+                ? `即将按<b>已启用的规则</b>清理 · 约 ${c} 项 / ${fmtBytes(b)}`
+                : '即将按<b>已启用的规则</b>清理（建议先点「扫描」看看会动什么）';
+        }
+        const pick = await askCleanMode(summary + '<br><span class="stj-dim">放回收站：随时可还原 · 彻底删除：不可恢复</span>');
+        if (!pick) return;
+        const permanent = pick === 'permanent';
+        const body = rels && rels.length ? { dryRun: false, rels, permanent } : { dryRun: false, permanent };
+        await streamJob('/clean/stream', body, permanent ? '正在彻底删除…' : '正在清理（进回收站）…', 'clean');
     }
 
     function renderTrash(trash) {
@@ -273,6 +321,7 @@
     async function refresh() {
         try {
             const s = await api('/status');
+            lastScan = s.lastReport || null;
             if (s.running) setStatus(`⏳ 正在${s.kind === 'scan' ? '扫描' : '清理'}…`, 'stj-busy');
             else if (s.error) setStatus(`⚠️ 上次任务出错：${s.error}`, 'stj-bad');
             else setStatus('就绪 · ' + (s.auto?.mode === 'auto' ? `自动：${s.auto.text}` : '手动'), '');
@@ -326,6 +375,18 @@
       <div class="menu_button menu_button_small stj-primary" id="stj_upd_go">立即更新</div>
     </div>
   </div>
+</div>
+<div class="stj-modal" id="stj_del_modal">
+  <div class="stj-modal-box">
+    <div class="stj-modal-title"><span class="stj-upd-dot"></span><span id="stj_del_title">清理方式</span></div>
+    <div class="stj-upd-sub" id="stj_del_sub"></div>
+    <div class="stj-modal-meta"><span>💡 放回收站：可随时还原 · 彻底删除：不可恢复</span></div>
+    <div class="stj-modal-actions">
+      <div class="menu_button menu_button_small" id="stj_del_cancel">取消</div>
+      <div class="menu_button menu_button_small stj-primary" id="stj_del_trash">移入回收站</div>
+      <div class="menu_button menu_button_small stj-danger" id="stj_del_perm">彻底删除</div>
+    </div>
+  </div>
 </div>`;
 
     /** 弹窗必须挂在 body 上：挂在扩展面板里会被面板的定位/裁剪影响，导致又小又不显眼。 */
@@ -334,6 +395,27 @@
         document.body.insertAdjacentHTML('beforeend', MODAL_HTML);
         const c = document.getElementById('stj_modal_close');
         if (c) c.addEventListener('click', () => closeProgress());
+        const dc = document.getElementById('stj_del_cancel');
+        if (dc) dc.addEventListener('click', () => closeCleanMode(null));
+        const dt = document.getElementById('stj_del_trash');
+        if (dt) dt.addEventListener('click', () => closeCleanMode('trash'));
+        const dp = document.getElementById('stj_del_perm');
+        if (dp) dp.addEventListener('click', () => {
+            // 不可恢复的操作 → 要点两次
+            if (dp.dataset.arm !== '1') {
+                dp.dataset.arm = '1';
+                dp.textContent = '再点一次，确认彻底删除';
+                dp.classList.add('stj-armed');
+                if (delArmTimer) clearTimeout(delArmTimer);
+                delArmTimer = setTimeout(() => {
+                    dp.dataset.arm = '';
+                    dp.textContent = '彻底删除';
+                    dp.classList.remove('stj-armed');
+                }, 5000);
+                return;
+            }
+            closeCleanMode('permanent');
+        });
     }
 
     let barPct = 0, progressStart = 0, progressTimer = null;
@@ -464,12 +546,12 @@
                     const sum = list.reduce((a, r) => ({ count: a.count + (r.count || 0), bytes: a.bytes + (r.bytes || 0) }), { count: 0, bytes: 0 });
                     const msg = kind === 'scan'
                         ? `扫描完成：可清 ${report.total?.count ?? sum.count} 项 / ${fmtBytes(report.total?.bytes ?? sum.bytes)}`
-                        : `清理完成：${report.moved ?? 0} 项 / ${fmtBytes(report.bytes ?? 0)}${report.failed?.length ? ` · 失败 ${report.failed.length}` : ''}${report.notFoundCount ? ` · 跳过 ${report.notFoundCount}` : ''}`;
+                        : `清理完成：${report.permanent ? `彻底删除 ${report.deleted ?? 0} 项` : `移入回收站 ${report.moved ?? 0} 项`} / ${fmtBytes(report.bytes ?? 0)}${report.failed?.length ? ` · 失败 ${report.failed.length}` : ''}${report.notFoundCount ? ` · 跳过 ${report.notFoundCount}` : ''}`;
                     toastr.success(msg);
                 }
             } catch { /* ignore */ }
             renderPreview(report);   // 扫描完直接把列表画出来
-            if (report && kind !== 'scan' && (report.moved || 0) > 0) {
+            if (report && kind !== 'scan' && ((report.moved || 0) + (report.deleted || 0)) > 0) {
                 try { await api('/scan', { method: 'POST' }); } catch { /* ignore */ }   // 真删除后自动重扫，列表自己刷新
             }
             await refresh();
@@ -576,7 +658,7 @@
   </div>
   <div class="inline-drawer-content">
     <div class="stj-status" id="stj_status">加载中…</div>
-    <div class="stj-hint">删东西前 <b>先入回收站</b>，可随时还原；默认只「试运行」不真删。</div>
+    <div class="stj-hint">清理时可选 <b>放回收站</b>（可还原）或 <b>彻底删除</b>；默认只「试运行」不真删。</div>
     <div class="stj-row"><label>版本</label>
       <span class="stj-ver" id="stj_ver">v?</span>
       <span class="menu_button menu_button_small" id="stj_updchk">检查更新</span>
@@ -630,10 +712,7 @@
         $el('stj_mode_auto').addEventListener('change', toggleAutoBox);
         $el('stj_scan').addEventListener('click', () => streamJob('/scan/stream', {}, '正在扫描…', 'scan'));
         $el('stj_dry').addEventListener('click', () => streamJob('/clean/stream', { dryRun: true }, '正在试运行…', 'clean'));
-        $el('stj_go').addEventListener('click', () => {
-            if (!confirm('确定清理？文件会先移入回收站（可还原），不是永久删除。')) return;
-            streamJob('/clean/stream', { dryRun: false }, '正在清理…', 'clean');
-        });
+        $el('stj_go').addEventListener('click', () => startClean({}));   // 先问「回收站 / 彻底删除」
         $el('stj_empt').addEventListener('click', () => {
             if (!confirm('彻底清空回收站？此操作不可撤销。')) return;
             act('清空回收站', async () => {

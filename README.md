@@ -219,7 +219,7 @@ pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-
 > **②** 更新/卸载把上面命令的 `install-termux.sh` 照样跑一遍即可（加 `--uninstall` 就是卸载）；
 > **③** 酒馆放在 `/sdcard` 上容易被系统杀，建议放 `~/SillyTavern`。
 >
-> 📖 **手机上从零开始（装 Termux → 装酒馆 → 装本插件 → 保活/自启 → 踩坑）请看 [方式四 → 📱 Android（Termux）](#-androidtermux--手机上从零开始)。**
+> 📖 **手机上从零开始（装 Termux → 装酒馆 → 装本插件 → 保活/自启 → 踩坑）：见下面「方式四」里的「📱 Android（Termux）」小节。**
 
 ### 方式二：在酒馆里直接装「前端扩展」（酒馆自带的安装界面）
 

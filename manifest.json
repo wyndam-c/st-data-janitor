@@ -1,0 +1,11 @@
+{
+    "display_name": "数据清洁工 (Data Janitor)",
+    "loading_order": 61,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "白鸦 / 小草",
+    "version": "1.0.0",
+    "homePage": ""
+}

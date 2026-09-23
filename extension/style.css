@@ -15,9 +15,14 @@
 .stj-rule-num input { width: 62px; margin: 0 4px; }
 
 .stj-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
-.stj-row > label { min-width: 90px; opacity: .85; font-size: .9em; }
+.stj-row > label { flex: 0 0 auto; min-width: 90px; opacity: .85; font-size: .9em; }
 .stj-row input[type=text] { flex: 1 1 240px; }
 .stj-check { display: flex; align-items: center; gap: 6px; min-width: 0 !important; }
+
+/* 数值 + 单位 必须同一行：ST 全局 select 常被拉成 width:100%，这里按需还原 */
+.stj-inline { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; white-space: nowrap; }
+.stj-inline input[type=number] { width: 86px; min-width: 86px; flex: 0 0 auto; margin: 0; text-align: center; }
+.stj-inline select { width: auto; min-width: 92px; flex: 0 0 auto; margin: 0; }
 
 .stj-btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
 .menu_button.stj-danger { border-color: #c62828 !important; color: #c62828 !important; }

@@ -117,3 +117,19 @@
   background: linear-gradient(90deg, #6b4cff, #a56bff) !important;
   border-color: transparent !important; color: #fff !important;
 }
+
+/* 服务端插件未安装时的引导卡 */
+.stj-setup {
+  margin: 8px 0 10px; padding: 10px 12px;
+  border: 1px solid rgba(107, 76, 255, .45); border-left: 3px solid #6b4cff;
+  border-radius: 8px; background: rgba(107, 76, 255, .12);
+}
+.stj-setup-title { font-weight: bold; margin-bottom: 6px; }
+.stj-setup-msg { font-size: .9em; line-height: 1.55; }
+.stj-setup-msg code, .stj-setup-note code { background: rgba(0, 0, 0, .22); padding: 1px 4px; border-radius: 4px; font-size: .92em; }
+.stj-setup-cmd {
+  margin: 8px 0; padding: 8px 10px; white-space: pre-wrap; word-break: break-all;
+  background: rgba(0, 0, 0, .3); border-radius: 6px; font-size: .82em; line-height: 1.45;
+}
+.stj-setup-btns { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 8px; }
+.stj-setup-note { font-size: .82em; opacity: .85; line-height: 1.65; }

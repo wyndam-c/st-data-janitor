@@ -187,12 +187,14 @@
     </div>
     <div class="stj-row" id="stj_auto_box">
       <label>自动间隔</label>
-      <input type="number" id="stj_ival" min="1" value="1" style="max-width:90px">
-      <select id="stj_iunit">
-        <option value="minutes">分钟</option>
-        <option value="hours" selected>小时</option>
-        <option value="days">天</option>
-      </select>
+      <span class="stj-inline">
+        <input type="number" id="stj_ival" min="1" value="1">
+        <select id="stj_iunit">
+          <option value="minutes">分钟</option>
+          <option value="hours" selected>小时</option>
+          <option value="days">天</option>
+        </select>
+      </span>
       <label class="stj-check"><input type="checkbox" id="stj_autodry" checked> 自动只报告不真删</label>
     </div>
     <div class="stj-row"><label>data 根</label><input type="text" id="stj_root" placeholder="留空自动探测"></div>

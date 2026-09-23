@@ -11,6 +11,7 @@
   **保活与开机自启**（`termux-wake-lock` / Termux:Boot / 常用别名）、更新与卸载、以及手机特有的坑（`/sdcard` 别放酒馆、
   32 位机报 `Unsupported platform: android arm LEtime-web` 要 `pkg install esbuild`、存储紧张推荐改的 `config.yaml` 几项）。
 - 🖼️ README 的面板实拍图换成新截图（手机浏览器里的真实面板），并加 `?v=2` 破缓存。
+- 🎴 GitHub **链接卡片图（Social preview）** 重新制作：1280×640，深紫底 + 标题 + 真实面板截图，生成脚本留在 `tools/make-social-preview.py`（可复现，改字改版式重跑即可）。
 
 ## [1.7.0] — 2026-09-24
 

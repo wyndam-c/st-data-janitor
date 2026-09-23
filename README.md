@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.6.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.6.1-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -351,7 +351,33 @@ docker compose restart          # 或：docker restart sillytavern
 
 ---
 
-### 🔄 让酒馆里能「一键更新」（可选）
+## 🔄 更新
+
+### 方式一：面板里一键更新（推荐）
+
+扩展面板顶部有一行「**版本 vX.Y.Z**」＋「**检查更新**」按钮：
+
+- 打开面板时会**静默查一次**，有新版直接弹窗，列出**更新内容**，可「立即更新」或「取消」；
+  已是最新则只提示一句「已经是最新版本」。
+- 「立即更新」= 自动把**服务端插件**和**前端扩展**都拉一遍（是 git 仓库就 `fetch` + `reset --hard origin/<分支>`；
+  拷文件装的则用发布分支的 tar 包覆盖）。
+- 生效方式：**前端扩展刷新页面**即可；**服务端插件要重启一次酒馆**（面板会提醒你）。
+
+> 📖 **那个「更新内容」是从哪来的？** 来自仓库 `main` 分支的 `CHANGELOG.md`，而且是优先走 **git 通道**拿的——
+> 直接在插件目录里 `git fetch` 后读 `origin/main:CHANGELOG.md`（跟酒馆自己 `git pull` 同一条路，最准最快）；
+> 本地目录不是 git 仓库时，才依次回退到 `raw.githubusercontent.com` → `gh-proxy.com` → `ghfast.top` →
+> `cdn.jsdelivr.net`（最后这个有最长 12 小时缓存，所以排在最后）。拿到整份 CHANGELOG 后，截面出**目标版本那一段**。
+
+### 方式二：重跑一键安装器（幂等，先自动备份）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.sh | bash -s -- --restart
+```
+
+它会重新下载最新发布覆盖两半，旧目录先打包成 `*.bak-时间戳.tar.gz`，`--restart` 能认出的启动方式会顺手重启。
+（只更新一半：`--plugin-only` / `--ext-only`）
+
+### 方式三：手动 / `git pull`（也是酒馆自动更新的原理）
 
 SillyTavern 启动时的那套「自动更新插件」要求**插件目录自己就是 Git 仓库根**，
 而本仓库源码是 `plugin/` + `extension/` 两个子目录，对不上。所以仓库额外维护两条**发布分支**，
@@ -393,6 +419,45 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
 >
 > 💡 如果你在用云同步工具同步 `data` 目录：请把 **`.git`** 加入同步的排除名单。
 > 否则两台机器各自的 Git 元数据会互相打架，生出成堆 ` (conflict_on_…)` 副本。
+
+---
+
+## 🗑️ 卸载
+
+卸载**不会**碰你的聊天/角色卡等任何数据，只是把插件的文件移走。
+
+### 方式一：安装器卸载（推荐，只移不删）
+
+```bash
+bash install.sh --st /path/to/SillyTavern --uninstall
+# 没留脚本的话：
+curl -fsSL https://raw.githubusercontent.com/wyndam-c/st-data-janitor/main/install.sh | bash -s -- --uninstall
+```
+
+两个目录会被重命名成 `st-data-janitor.removed-<时间戳>`，重启酒馆后就干净了；确认没问题再手动删掉那两份：
+
+```bash
+rm -rf /path/to/SillyTavern/plugins/st-data-janitor.removed-*
+rm -rf /path/to/SillyTavern/data/default-user/extensions/st-data-janitor.removed-*
+```
+
+### 方式二：手动删（就两步）
+
+```bash
+# ① 服务端插件
+rm -rf /path/to/SillyTavern/plugins/st-data-janitor
+# ② 前端扩展（用户名按你的来）
+rm -rf /path/to/SillyTavern/data/default-user/extensions/st-data-janitor
+# ③ 重启酒馆（必须，不然服务端插件还在内存里跑）
+```
+
+### 顺手值得一看的几处
+
+- **回收站**：`<ST>/.janitor-trash/`（在 `data` **同级**）。卸载插件不会自动删它——
+  里面可能有你想找回的东西，确认不要了再 `rm -rf`。
+- **`config.yaml`**：`enableServerPlugins` 是全局开关，别家插件可能也在用，**卸载时不要关它**。
+- （如果装过旧版）扩展目录里残留的 `.git` 也一并在上面那条 `rm -rf` 里了；
+  云同步的排除名单里那行 `st-data-janitor` 可以留着，下次装回来正好用得上。
 
 ---
 

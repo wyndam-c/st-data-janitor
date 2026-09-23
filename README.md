@@ -508,7 +508,7 @@ rm -rf /path/to/SillyTavern/data/default-user/extensions/st-data-janitor
 
 ### 面板操作（推荐）
 
-![数据清洁工 · 扩展面板](assets/screenshot-panel.jpg)
+![数据清洁工 · 扩展面板（手机浏览器里也能用）](assets/screenshot-panel.jpg?v=2)
 
 重启后打开酒馆 → 右侧「扩展」面板 → 找到 **数据清洁工 (Data Janitor)**：
 

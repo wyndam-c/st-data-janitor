@@ -146,9 +146,7 @@ cp extension/* /path/to/SillyTavern/data/default-user/extensions/st-data-janitor
 
 ### 面板操作（推荐）
 
-![扩展面板界面示意图](assets/panel-preview.png)
-
-> 上图为**界面示意图**（方便认路，非真实截图）；实际界面以你酒馆里的为准。
+![数据清洁工 · 扩展面板](assets/screenshot-panel.jpg)
 
 重启后打开酒馆 → 右侧「扩展」面板 → 找到 **数据清洁工 (Data Janitor)**：
 
@@ -295,7 +293,7 @@ st-data-janitor/
 ├── assets/
 │   ├── banner.png           # 头图
 │   ├── flow.png             # 工作流程图
-│   └── panel-preview.png    # 面板界面示意图
+│   └── screenshot-panel.jpg # 扩展面板实拍截图
 ├── install.sh               # 一键安装
 ├── README.md
 ├── CHANGELOG.md

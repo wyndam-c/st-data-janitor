@@ -2,7 +2,7 @@
  * ST Data Janitor — SillyTavern 服务端插件
  *
  * 自动/手动清理 `data` 目录里的「没用数据」和「多余数据」：
- *   同步冲突副本 / 同步临时残留 / 系统垃圾文件 / 空目录 / 过量旧备份 / 孤儿缩略图 / 空文件
+ *   同步冲突副本 / 同步临时残留 / 系统垃圾文件 / 空目录 / 过量旧备份 / 孤儿缩略图 / 空文件 / 重复文件去重
  *
  * 路由（挂载在 /api/plugins/st-data-janitor 下）：
  *   GET  /status        状态 + 配置 + 最近一次报告
@@ -26,8 +26,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.0.0',
-    description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份等），删除前先入回收站。',
+    version: '1.1.0',
+    description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');

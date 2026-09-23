@@ -6,6 +6,7 @@
  * 单独跑：
  *   node lib/janitor.mjs --scan  /root/SillyTavern/data
  *   node lib/janitor.mjs --clean /root/SillyTavern/data --dry-run
+ *   node lib/janitor.mjs --scan  /root/SillyTavern/data --dupes [--dup-keep 1]
  *
  * 安全设计：
  *   - 默认 **试运行**（dry-run），只报告不动手；
@@ -16,6 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 export const TRASH_DIR = '.janitor-trash';
 
@@ -36,6 +38,25 @@ export const RULE_LABELS = {
     oldBackups: '过量旧备份',
     orphanThumbs: '孤儿缩略图',
     zeroByteFiles: '空文件',
+    duplicates: '重复文件去重',
+};
+
+/** 去重覆盖的集合。key = 逻辑分组（用于 scope 配置），value = data/<用户>/ 下的目录名。 */
+export const DUPLICATE_GROUPS = {
+    characters: ['characters'],
+    worlds: ['worlds'],
+    presets: ['OpenAI Settings', 'KoboldAI Settings', 'NovelAI Settings', 'TextGen Settings', 'instruct', 'context', 'sysprompt', 'reasoning'],
+    themes: ['themes'],
+    quickreplies: ['QuickReplies'],
+};
+
+/** 去重范围的中文名（给 UI/日志用）。 */
+export const DUPLICATE_SCOPE_LABELS = {
+    characters: '角色卡',
+    worlds: '世界书',
+    presets: '预设',
+    themes: '主题',
+    quickreplies: '快捷回复',
 };
 
 export const DEFAULT_CONFIG = {
@@ -55,6 +76,17 @@ export const DEFAULT_CONFIG = {
         oldBackups: { enabled: false, keepNewest: 10 },
         orphanThumbs: { enabled: false },
         zeroByteFiles: { enabled: false, minAgeHours: 24 },
+        // 重复文件去重（角色卡 / 世界书 / 预设 …）。默认关闭：删的是「看起来一样」的副本，请先看试运行报告。
+        duplicates: {
+            enabled: false,
+            keepNewest: 1,        // 每组保留 N 份
+            preferBase: true,     // 优先保留文件名「干净」的那份（无 (1)/副本 标记；角色卡则优先文件名=卡名），再按时间取最新
+            minSizeKB: 0,         // 小于该体积的文件不判重（0 = 不限；可用来避开空模板类误伤）
+            identical: true,      // 判重方式①：文件内容完全相同（sha256）
+            nameCopies: true,     // 判重方式②：文件名带副本标记（(1) / 副本 / copy）
+            charNames: true,      // 判重方式③：角色卡按「卡内名字」判重
+            scope: ['characters', 'worlds', 'presets', 'themes', 'quickreplies'],
+        },
     },
 };
 
@@ -93,6 +125,207 @@ function walk(root, onFile, onDir) {
 
 function statSafe(p) {
     try { return fs.statSync(p, { throwIfNoEntry: false }); } catch { return null; }
+}
+
+// ---------------------------------------------------------------- 去重工具
+
+/** 文件内容 sha256（十六进制）。 */
+function sha256File(p) {
+    return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+}
+
+/**
+ * 文件名里的「副本标记」：
+ *   xxx (1).json / xxx(2).json / xxx（1）.json / xxx[1].json
+ *   xxx - 副本.json / xxx 副本.json / xxx_拷贝1.json / xxx copy.json / xxx Copy 2.json
+ * 只认这些明确的标记，**不**动「名字结尾的普通数字」——否则会把
+ * 「插入体位1 / 插入体位2」这类正常区分的内容误判成重复。
+ */
+const COPY_MARKER_RES = [
+    /\s*[\(\uff08\[\u3010]\s*\d{1,3}\s*[\)\uff09\]\u3011]\s*$/,   // (1) (2) （1） [1] 【1】
+    /\s*[-_]?\s*(?:副本|拷贝|复件)\s*\d{0,3}\s*$/,                  // - 副本 / 副本2
+    /\s*[-_ ]\s*copy\s*\d{0,3}\s*$/i,                              // - copy / copy2
+];
+
+function stripCopyMarker(stem) {
+    let s = stem;
+    for (let round = 0; round < 4; round++) {
+        let changed = false;
+        for (const re of COPY_MARKER_RES) {
+            const m = s.match(re);
+            if (m) { s = s.slice(0, m.index); changed = true; }
+        }
+        if (!changed) break;
+    }
+    return s.trim();
+}
+
+/**
+ * 从角色卡 PNG 里读出「卡内名字」（v2 的 chara / v3 的 ccv3 tEXt/iTXt 块，base64 JSON）。
+ * 这比按文件名判重准：同名的角色卡不管文件叫什么，都能对上。
+ * 读不到（非 PNG / 不是卡）返回 null。
+ */
+export function pngCardName(abs) {
+    let buf;
+    try { buf = fs.readFileSync(abs); } catch { return null; }
+    if (buf.length < 8 || buf.readUInt32BE(0) !== 0x89504e47) return null;
+    let off = 8;
+    while (off + 8 <= buf.length) {
+        const len = buf.readUInt32BE(off);
+        const type = buf.toString('latin1', off + 4, off + 8);
+        const data = buf.subarray(off + 8, off + 8 + len);
+        if (type === 'tEXt' || type === 'iTXt') {
+            let key = null, val = null;
+            const z = data.indexOf(0);
+            if (z > 0) {
+                key = data.toString('latin1', 0, z);
+                if (type === 'tEXt') {
+                    val = data.toString('latin1', z + 1);
+                } else {
+                    // iTXt: <keyword>\0<compflag><compmethod><lang>\0<translated>\0<text>
+                    const rest = data.subarray(z + 1);
+                    const z2 = rest.indexOf(0, 2);
+                    val = rest.subarray(z2 >= 0 ? z2 + 1 : 2).toString('utf8');
+                }
+            }
+            if (val && (key === 'chara' || key === 'ccv3')) {
+                try {
+                    const j = JSON.parse(Buffer.from(val.trim(), 'base64').toString('utf8'));
+                    const n = j?.data?.name || j?.name;
+                    if (n && String(n).trim()) return String(n).trim();
+                } catch { /* 不是标准卡，跳过 */ }
+            }
+        }
+        off += 12 + len;
+        if (type === 'IEND') break;
+    }
+    return null;
+}
+
+/** 从一组候选里挑出「要删的副本」：文件名更“干净”的优先（canonical），再按 mtime 取最新，保留 keep 份。 */
+function markDuplicates(list, keep, addTarget) {
+    const sorted = [...list].sort((a, b) => {
+        const ca = a.canonical === false ? 1 : 0;
+        const cb = b.canonical === false ? 1 : 0;
+        if (ca !== cb) return ca - cb;
+        return b.mtimeMs - a.mtimeMs;
+    });
+    for (const f of sorted.slice(Math.max(1, keep))) addTarget(f);
+}
+
+/**
+ * 扫描所选集合里的重复文件。返回 { targets, meta, groups }：
+ *   targets：要清掉的副本绝对路径；meta：abs → { rel, size, mtimeMs }；groups：命中明细。
+ */
+export function collectDuplicates(config, root, userDirs) {
+    const d = (config?.rules?.duplicates) || DEFAULT_CONFIG.rules.duplicates;
+    const keep = Math.max(1, Number(d.keepNewest) || 1);
+    const minBytes = Math.max(0, Number(d.minSizeKB) || 0) * 1024;
+    const scope = Array.isArray(d.scope) && d.scope.length ? d.scope : Object.keys(DUPLICATE_GROUPS);
+    const preferBase = d.preferBase !== false;
+
+    const seen = new Set();       // 已判为副本的绝对路径（同一文件只算一次）
+    const meta = new Map();       // abs -> { rel, size, mtimeMs }
+    const groups = [];            // { group, dir, reason, files[], drop }
+
+    const relOf = (abs) => path.relative(root, abs).split(path.sep).join('/');
+    const addTarget = (f) => { seen.add(f.abs); meta.set(f.abs, { rel: relOf(f.abs), size: f.size, mtimeMs: f.mtimeMs }); };
+
+    for (const ud of userDirs) {
+        for (const [grp, dirs] of Object.entries(DUPLICATE_GROUPS)) {
+            if (!scope.includes(grp)) continue;
+            for (const dn of dirs) {
+                const dir = path.join(ud, dn);
+                let ents;
+                try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+                const files = [];
+                for (const e of ents) {
+                    if (!e.isFile()) continue;
+                    if (isProtectedName(e.name) || isConflictCopy(e.name)) continue;  // 冲突副本交给专门规则
+                    const abs = path.join(dir, e.name);
+                    const st = statSafe(abs);
+                    if (!st || st.size < minBytes) continue;
+                    files.push({ abs, name: e.name, stem: e.name.replace(/\.[^.]+$/, ''), size: st.size, mtimeMs: st.mtimeMs });
+                }
+                if (files.length < 2) continue;
+
+                // ① 内容完全相同：先按体积分桶，只有同体积的才去算哈希（省一大截 IO）
+                if (d.identical !== false) {
+                    const bySize = new Map();
+                    for (const f of files) {
+                        if (!bySize.has(f.size)) bySize.set(f.size, []);
+                        bySize.get(f.size).push(f);
+                    }
+                    for (const bucket of bySize.values()) {
+                        if (bucket.length < 2) continue;
+                        const byHash = new Map();
+                        for (const f of bucket) {
+                            let h = null; try { h = sha256File(f.abs); } catch { /* 跳过读不了的文件 */ }
+                            if (!h) continue;
+                            if (!byHash.has(h)) byHash.set(h, []);
+                            byHash.get(h).push(f);
+                        }
+                        for (const g of byHash.values()) {
+                            if (g.length < 2) continue;
+                            const before = seen.size;
+                            const g2 = preferBase ? g.map(x => ({ ...x, canonical: stripCopyMarker(x.stem) === x.stem })) : g;
+                            markDuplicates(g2, keep, addTarget);
+                            if (seen.size > before) groups.push({ group: grp, dir: dn, reason: '内容相同', files: g.map(x => x.name), drop: g.length - keep });
+                        }
+                    }
+                }
+
+                // ② 同名副本（文件名带 (1)/副本/copy 之类）
+                if (d.nameCopies !== false) {
+                    const byKey = new Map();
+                    for (const f of files) {
+                        const key = stripCopyMarker(f.stem);
+                        if (!byKey.has(key)) byKey.set(key, []);
+                        byKey.get(key).push({ ...f, marked: key !== f.stem });
+                    }
+                    for (const list of byKey.values()) {
+                        if (list.length < 2 || !list.some(x => x.marked)) continue;
+                        const before = seen.size;
+                        const list2 = preferBase ? list.map(x => ({ ...x, canonical: !x.marked })) : list;
+                        markDuplicates(list2, keep, addTarget);
+                        if (seen.size > before) groups.push({ group: grp, dir: dn, reason: '同名副本', files: list.map(x => x.name), drop: list.length - keep });
+                    }
+                }
+
+                // ③ 角色卡按「卡内名字」判重（仅角色卡集合）
+                if (grp === 'characters' && d.charNames !== false) {
+                    const byName = new Map();
+                    for (const f of files) {
+                        if (!/\.png$/i.test(f.name)) continue;
+                        const n = pngCardName(f.abs);
+                        if (!n) continue;
+                        if (!byName.has(n)) byName.set(n, []);
+                        byName.get(n).push(f);
+                    }
+                    for (const [cardName, list] of byName) {
+                        if (list.length < 2) continue;
+                        const before = seen.size;
+                        const list2 = preferBase ? list.map(x => ({ ...x, canonical: x.stem === cardName })) : list;
+                        markDuplicates(list2, keep, addTarget);
+                        if (seen.size > before) groups.push({ group: grp, dir: dn, reason: `角色卡同名「${cardName}」`, files: list.map(x => x.name), drop: list.length - keep });
+                    }
+                }
+            }
+        }
+    }
+
+    // 角色卡去重 → 顺带清掉它对应的缩略图（否则会变成孤儿缩略图）
+    for (const abs of [...seen]) {
+        if (path.basename(path.dirname(abs)) !== 'characters') continue;
+        const ud = path.dirname(path.dirname(abs));
+        const thumb = path.join(ud, 'thumbnails', 'avatar', path.basename(abs));
+        if (!fs.existsSync(thumb)) continue;
+        const st = statSafe(thumb);
+        seen.add(thumb);
+        meta.set(thumb, { rel: relOf(thumb), size: st ? st.size : 0, mtimeMs: st ? st.mtimeMs : 0 });
+    }
+
+    return { targets: [...seen], meta, groups };
 }
 
 // ---------------------------------------------------------------- 规则
@@ -212,6 +445,22 @@ export function collectTargets(config, root) {
                 const hit = [...cset].some(c => c.replace(/\.[^.]+$/, '') === stem);
                 if (!hit) push('orphanThumbs', path.join(tdir, name), path.relative(root, path.join(tdir, name)).split(path.sep).join('/'));
             }
+        }
+    }
+
+    // 重复文件去重：角色卡 / 世界书 / 预设 等同内容或同名的副本
+    if (rules.duplicates?.enabled) {
+        const { targets, meta } = collectDuplicates(cfg, root, userDirs);
+        // 已经会被别的规则收拾的文件不再重复计入，避免清理时重复搬运
+        const handled = new Set();
+        for (const id of Object.keys(RULE_LABELS)) {
+            if (id === 'duplicates') continue;
+            for (const it of out[id] || []) handled.add(it.abs);
+        }
+        for (const abs of targets) {
+            if (handled.has(abs)) continue;
+            const m = meta.get(abs) || { rel: path.relative(root, abs).split(path.sep).join('/'), size: 0, mtimeMs: 0 };
+            out.duplicates.push({ abs, rel: m.rel, size: m.size, mtimeMs: m.mtimeMs });
         }
     }
 
@@ -401,6 +650,8 @@ if (invokedDirectly) {
     cfg.rules.emptyDirs.enabled = args.includes('--empty-dirs');
     cfg.rules.oldBackups.enabled = args.includes('--old-backups');
     if (cfg.rules.oldBackups.enabled) cfg.rules.oldBackups.keepNewest = Number(args[args.indexOf('--keep') + 1] || 30);
+    cfg.rules.duplicates.enabled = args.includes('--dupes');
+    if (cfg.rules.duplicates.enabled) cfg.rules.duplicates.keepNewest = Number(args[args.indexOf('--dup-keep') + 1] || 1);
     try {
         const res = mode === 'scan' ? scan(cfg) : clean(cfg, { dryRun });
         console.log(JSON.stringify(res, null, 2));

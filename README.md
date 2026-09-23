@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -43,7 +43,8 @@
 
 ## ✨ 特性
 
-- 🧹 **7 条清理规则**，每条可独立开关：同步冲突副本 / 同步临时残留 / 系统垃圾文件 / 空目录 / 过量旧备份 / 孤儿缩略图 / 空文件。
+- 🧹 **8 条清理规则**，每条可独立开关：同步冲突副本 / 同步临时残留 / 系统垃圾文件 / 空目录 / 过量旧备份 / 孤儿缩略图 / 空文件 / **重复文件去重**。
+- 🧬 **角色卡 / 世界书 / 预设 去重**：同内容、同名副本、或角色卡「同卡名」的重复都能挑出来；角色卡按**卡内名字**判重（同卡不同文件名也认），并联动清掉对应缩略图。
 - 🕹️ **手动 / 自动**：想清就点；也能设「每 N 分钟 / 小时 / 天」自动跑。
 - 🧪 **默认试运行**：不开真删就只出报告，先看后删。
 - ♻️ **删除进回收站**：同盘 `rename` 秒级完成，带清单文件，可**一键还原**；回收站还能定期自动清空。
@@ -65,6 +66,7 @@
 | **过量旧备份** | `data/<用户>/backups/` 里超量的旧备份，**按聊天分组**只留最新 N 份 | ⬜ 关 | `保留最新 N 份`（默认 10） |
 | **孤儿缩略图** | `thumbnails/` 里找不到对应角色卡的图片 | ⬜ 关 | — |
 | **空文件** | 0 字节、且已存在超过 N 小时的文件 | ⬜ 关 | `存续 N 小时`（默认 24） |
+| **重复文件去重** | 所选集合（角色卡 / 世界书 / 预设 / 主题 / 快捷回复）里「多余副本」：内容完全相同 / 文件名带 `(1)`·`副本`·`copy` 等标记 / 角色卡同卡名 | ⬜ 关 | `保留 N 份`、`优先留干净文件名`、`小于 N KB 不判重`、`判重方式`、`范围` |
 
 > 默认关闭的规则都是**有一定判断风险**或**后果较重**的，请确认后再开。
 
@@ -357,6 +359,9 @@ node plugin/lib/janitor.mjs --clean /path/to/SillyTavern/data --apply
 
 # 附加规则示例：旧备份 + 空目录（每个聊天保留最新 30 份）
 node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --old-backups --keep 30 --empty-dirs
+
+# 去重（角色卡/世界书/预设…），每组保留 1 份
+node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --dupes --dup-keep 1
 ```
 
 输出为 JSON，方便二次处理。
@@ -398,7 +403,17 @@ node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --old-backups --ke
     "emptyDirs":      { "enabled": false },
     "oldBackups":     { "enabled": false, "keepNewest": 10 },
     "orphanThumbs":   { "enabled": false },
-    "zeroByteFiles":  { "enabled": false, "minAgeHours": 24 }
+    "zeroByteFiles":  { "enabled": false, "minAgeHours": 24 },
+    "duplicates": {                        // 重复文件去重（默认关闭）
+      "enabled": false,
+      "keepNewest": 1,                     // 每组保留 N 份
+      "preferBase": true,                  // 优先留文件名“干净”的那份，再按时间取最新
+      "minSizeKB": 0,                      // 小于该体积不判重（0=不限；可避开空模板误伤）
+      "identical": true,                   // 判重方式①：内容相同
+      "nameCopies": true,                  // 判重方式②：同名副本（(1)/副本/copy…）
+      "charNames": true,                   // 判重方式③：角色卡按卡名判重
+      "scope": ["characters", "worlds", "presets", "themes", "quickreplies"]
+    }
   }
 }
 ```
@@ -445,6 +460,11 @@ A：多半是 **SillyTavern 自带的聊天备份**（`config.yaml` → `backups
 **Q：我用了云同步（如 st-cloud-sync / Unison）会有影响吗？**
 A：两条注意：① 回收站必须在 `data` 同级（本插件已如此），否则会被同步带走；
 ② 你在 A 机清理的文件，下一轮同步会同步删除到 B 机——这是预期行为，但请确认你确实想两边都删。
+
+**Q：去重会不会把我不同版本的角色卡 / 预设删了？**
+A：「内容相同」只删**字节完全一致**的；「同名副本」只删文件名带 `(1)` / `副本` / `copy` 等明确标记的；「角色卡同名」按**卡内名字**判重——同名的两张卡只留一张（默认留文件名最干净的，再按时间取最新）。
+如果你收藏了同一角色的多个不同版本（名字一样、内容不同），请**关掉「角色卡同名」**，或先给要保的版本改名。
+世界书/预设以**文件名**为身份，只做「内容相同」判重；若你有一堆内容相同但各自独立的空世界书（如自动生成的「XX总结」），把「小于 N KB 不判重」调大即可避开。误删都进回收站，可整批还原。
 
 **Q：支持 Docker / Windows / macOS 吗？**
 A：核心逻辑是纯 Node 文件操作，理论上都能跑；差别只在路径与启动脚本。

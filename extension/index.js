@@ -17,6 +17,15 @@
         { id: 'oldBackups', label: '过量旧备份', keep: true, hint: '每个聊天的 backups/ 只留最新 N 份' },
         { id: 'orphanThumbs', label: '孤儿缩略图', hint: 'thumbnails/ 里没有对应角色卡的' },
         { id: 'zeroByteFiles', label: '空文件', age: true, hint: '0 字节且已存在 N 小时以上' },
+        { id: 'duplicates', label: '重复文件去重', dup: true, hint: '角色卡 / 世界书 / 预设 等同内容或同名的副本' },
+    ];
+
+    const DUP_SCOPES = [
+        { id: 'characters', label: '角色卡' },
+        { id: 'worlds', label: '世界书' },
+        { id: 'presets', label: '预设' },
+        { id: 'themes', label: '主题' },
+        { id: 'quickreplies', label: '快捷回复' },
     ];
 
     const getCtx = () => SillyTavern.getContext();
@@ -99,6 +108,17 @@
             if (cb) cb.checked = !!c.rules?.[r.id]?.enabled;
             if (r.keep) { const k = $el('stj_keep_' + r.id); if (k) k.value = c.rules?.[r.id]?.keepNewest ?? 10; }
             if (r.age) { const a = $el('stj_age_' + r.id); if (a) a.value = c.rules?.[r.id]?.minAgeHours ?? 24; }
+            if (r.dup) {
+                const d = c.rules?.duplicates || {};
+                $el('stj_dup_keep').value = d.keepNewest ?? 1;
+                $el('stj_dup_prefer').checked = d.preferBase !== false;
+                $el('stj_dup_min').value = d.minSizeKB ?? 0;
+                $el('stj_dup_identical').checked = d.identical !== false;
+                $el('stj_dup_nameCopies').checked = d.nameCopies !== false;
+                $el('stj_dup_charNames').checked = d.charNames !== false;
+                const sc = Array.isArray(d.scope) && d.scope.length ? d.scope : DUP_SCOPES.map(s => s.id);
+                for (const s of DUP_SCOPES) { const cb = $el('stj_ds_' + s.id); if (cb) cb.checked = sc.includes(s.id); }
+            }
         }
     }
 
@@ -108,6 +128,15 @@
             const entry = { enabled: !!$el('stj_r_' + r.id)?.checked };
             if (r.keep) entry.keepNewest = Number($el('stj_keep_' + r.id)?.value) || 0;
             if (r.age) entry.minAgeHours = Number($el('stj_age_' + r.id)?.value) || 24;
+            if (r.dup) {
+                entry.keepNewest = Math.max(1, Number($el('stj_dup_keep')?.value) || 1);
+                entry.preferBase = !!$el('stj_dup_prefer')?.checked;
+                entry.minSizeKB = Number($el('stj_dup_min')?.value) || 0;
+                entry.identical = !!$el('stj_dup_identical')?.checked;
+                entry.nameCopies = !!$el('stj_dup_nameCopies')?.checked;
+                entry.charNames = !!$el('stj_dup_charNames')?.checked;
+                entry.scope = DUP_SCOPES.filter(s => $el('stj_ds_' + s.id)?.checked).map(s => s.id);
+            }
             rules[r.id] = entry;
         }
         return {
@@ -168,6 +197,21 @@
         </label>
         ${r.keep ? `<label class="stj-rule-num">保留<input type="number" id="stj_keep_${r.id}" min="0" value="10">份</label>` : ''}
         ${r.age ? `<label class="stj-rule-num">存续<input type="number" id="stj_age_${r.id}" min="0" value="24">小时</label>` : ''}
+        ${r.dup ? `<div class="stj-dup">
+          <div class="stj-dup-line">
+            <label class="stj-rule-num">保留<input type="number" id="stj_dup_keep" min="1" value="1">份</label>
+            <label class="stj-check"><input type="checkbox" id="stj_dup_prefer" checked> 优先留“干净”文件名</label>
+            <label class="stj-rule-num">小于<input type="number" id="stj_dup_min" min="0" value="0">KB 不判重</label>
+          </div>
+          <div class="stj-dup-line">判重方式：
+            <label class="stj-check"><input type="checkbox" id="stj_dup_identical" checked> 内容相同</label>
+            <label class="stj-check"><input type="checkbox" id="stj_dup_nameCopies" checked> 同名副本</label>
+            <label class="stj-check"><input type="checkbox" id="stj_dup_charNames" checked> 角色卡同名</label>
+          </div>
+          <div class="stj-dup-line">范围：
+            ${DUP_SCOPES.map(s => `<label class="stj-check"><input type="checkbox" id="stj_ds_${s.id}" checked> ${s.label}</label>`).join('')}
+          </div>
+        </div>` : ''}
       </div>`).join('');
 
         return `

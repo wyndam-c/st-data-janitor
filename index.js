@@ -189,7 +189,26 @@
     }
 
     // ---------------------------------------------------------- 进度弹窗
-    let barPct = 0;
+    const MODAL_HTML = `
+<div class="stj-modal" id="stj_modal">
+  <div class="stj-modal-box">
+    <div class="stj-modal-title"><span class="stj-spin" id="stj_spin"></span><span id="stj_modal_title">正在处理…</span></div>
+    <div class="stj-bar"><div class="stj-bar-fill" id="stj_bar"></div></div>
+    <div class="stj-modal-line"><span id="stj_modal_phase">准备中…</span><span id="stj_modal_pct">0%</span></div>
+    <div class="stj-modal-meta"><span id="stj_elapsed">已用 0.0 秒</span><span class="stj-dim">跑完会自动消失</span></div>
+    <div class="stj-modal-actions"><div class="menu_button menu_button_small" id="stj_modal_close">关闭</div></div>
+  </div>
+</div>`;
+
+    /** 弹窗必须挂在 body 上：挂在扩展面板里会被面板的定位/裁剪影响，导致又小又不显眼。 */
+    function ensureModal() {
+        if (document.getElementById('stj_modal')) return;
+        document.body.insertAdjacentHTML('beforeend', MODAL_HTML);
+        const c = document.getElementById('stj_modal_close');
+        if (c) c.addEventListener('click', () => closeProgress());
+    }
+
+    let barPct = 0, progressStart = 0, progressTimer = null;
     const RULE_LABEL = Object.fromEntries(RULES.map(r => [r.id, r.label]));
     const SCOPE_LABEL = Object.fromEntries(DUP_SCOPES.map(s => [s.id, s.label]));
 
@@ -201,6 +220,14 @@
         $el('stj_modal_pct').textContent = '0%';
         $el('stj_bar').style.width = '0%';
         $el('stj_modal_close').style.display = 'none';
+        const sp = $el('stj_spin'); if (sp) sp.style.display = '';
+        progressStart = Date.now();
+        const el = $el('stj_elapsed'); if (el) el.textContent = '已用 0.0 秒';
+        if (progressTimer) clearInterval(progressTimer);
+        progressTimer = setInterval(() => {
+            const t = $el('stj_elapsed');
+            if (t) t.textContent = `已用 ${((Date.now() - progressStart) / 1000).toFixed(1)} 秒`;
+        }, 100);
         m.style.display = 'flex';
     }
 
@@ -214,7 +241,10 @@
     }
 
     function closeProgress(delay) {
-        const hide = () => { const m = $el('stj_modal'); if (m) m.style.display = 'none'; };
+        const hide = () => {
+            const m = $el('stj_modal'); if (m) m.style.display = 'none';
+            if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+        };
         if (delay) setTimeout(hide, delay); else hide();
     }
 
@@ -293,9 +323,22 @@
             $el('stj_modal_title').textContent = '任务失败';
             setProgress(barPct, '出错：' + serverErr);
             $el('stj_modal_close').style.display = '';
+            const sp = $el('stj_spin'); if (sp) sp.style.display = 'none';
+            if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
             setStatus('⚠️ 任务失败：' + serverErr, 'stj-bad');
+            try { toastr.error('任务失败：' + serverErr); } catch { /* ignore */ }
         } else {
-            closeProgress(500);
+            closeProgress(600);
+            try {
+                if (report) {
+                    const lines = Array.isArray(report.rules) ? report.rules : [];
+                    const tot = lines.reduce((a, r) => ({ count: a.count + (r.count || 0), bytes: a.bytes + (r.bytes || 0) }), { count: 0, bytes: 0 });
+                    const msg = kind === 'scan'
+                        ? `扫描完成：可清 ${tot.count} 项 / ${fmtBytes(tot.bytes)}`
+                        : `清理完成：移动 ${report.moved ?? 0} 项 / ${fmtBytes(report.bytes ?? 0)}`;
+                    toastr.success(msg);
+                }
+            } catch { /* ignore */ }
             await refresh();
         }
         return report;
@@ -366,19 +409,12 @@
     <div class="stj-sub">回收站</div>
     <div class="stj-trash" id="stj_trash"></div>
   </div>
-</div>
-<div class="stj-modal" id="stj_modal">
-  <div class="stj-modal-box">
-    <div class="stj-modal-title" id="stj_modal_title">正在处理…</div>
-    <div class="stj-bar"><div class="stj-bar-fill" id="stj_bar"></div></div>
-    <div class="stj-modal-line"><span id="stj_modal_phase">准备中…</span><span id="stj_modal_pct">0%</span></div>
-    <div class="stj-modal-actions"><div class="menu_button menu_button_small" id="stj_modal_close">关闭</div></div>
-  </div>
 </div>`;
     }
 
     async function init() {
         if ($el('stj_status') || !document.getElementById('extensions_settings')) return;
+        ensureModal();
         $('#extensions_settings').append(buildHtml());
 
         $el('stj_save').addEventListener('click', () => act('保存配置', async () => {
@@ -393,7 +429,6 @@
             if (!confirm('确定清理？文件会先移入回收站（可还原），不是永久删除。')) return;
             streamJob('/clean/stream', { dryRun: false }, '正在清理…', 'clean');
         });
-        $el('stj_modal_close').addEventListener('click', () => closeProgress());
         $el('stj_empt').addEventListener('click', () => {
             if (!confirm('彻底清空回收站？此操作不可撤销。')) return;
             act('清空回收站', async () => {

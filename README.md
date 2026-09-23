@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
-[![Version](https://img.shields.io/badge/version-1.4.0-brightgreen.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.5.0-brightgreen.svg)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
@@ -48,6 +48,8 @@
 - 🕹️ **手动 / 自动**：想清就点；也能设「每 N 分钟 / 小时 / 天」自动跑。
 - 🧪 **默认试运行**：不开真删就只出报告，先看后删。
 - ♻️ **删除进回收站**：同盘 `rename` 秒级完成，带清单文件，可**一键还原**；回收站还能定期自动清空。
+- 🗑️ **要不要进回收站、你自己定**：每次清理（含「清理选中项」）都会弹窗问一句——
+  「**移入回收站**（可还原）」还是「**彻底删除**（不可恢复）」；选彻底删除要**点两次**确认。
 - 🛡️ **硬保护**：`_storage/`（账号库）、`cookie-secret.txt`、`.gitkeep`、`node_modules/`、`.git/` 永不触碰。
 - 📦 **旧备份按聊天分组**：保留「每个聊天最新 N 份」，不会因为某个聊天刷得勤就把别的聊天的备份挤光。
 - 🔌 **零第三方运行时依赖**：服务端插件只用 Node 内置模块（外加 SillyTavern 自带的 express）。
@@ -84,15 +86,21 @@
 
 ## 🛡️ 安全设计
 
-### 1）删除 = 进回收站，不是硬删
+### 1）删除 = 先问一句，再进回收站（或按你要求彻底删）
 
-所有被清理的文件都会被 `rename` 到：
+点「立即清理 / 清理选中项」时，弹窗会让你选：
+
+- **移入回收站**（推荐）——文件被 `rename` 到下面这个位置，随时可还原：
 
 ```
 <SillyTavern>/.janitor-trash/<批次时间戳>/files/<原始相对路径>
 <SillyTavern>/.janitor-trash/<批次时间戳>/manifest.json
 ```
 
+- **彻底删除**——直接 `unlink`，**不进回收站、不可恢复**；按钮会变成红色并需**再点一次**确认。
+  没把握就别选这个（至少先点「试运行」看看会动什么）。
+
+回收站模式下：
 - `manifest.json` 记录了这一批都动了哪些文件、原本在哪、多大。
 - 面板里点「还原」即可把某一批**原样放回**（目标已存在则跳过，不覆盖）。
 - 点「清空回收站」才是**永久删除**。
@@ -354,7 +362,7 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
   - 底部实时显示「已选 N 项 / X MB」；清理完会自动重扫，列表自己刷新
   - 安全：服务端会拿勾选路径跟**本次扫描结果取交集**，不在里面的（比如过期路径）一律跳过
 - **试运行清理**：列出「如果清理会动哪些文件」
-- **立即清理**：真的清（会先弹确认；文件进回收站）
+- **立即清理**：真的清 —— 会弹窗选「**移入回收站**（可还原）」或「**彻底删除**（需点两次确认）」
 - **清空回收站**：彻底删除（不可还原）
 - **保存配置**：把规则开关 / 模式 / 间隔写进配置
 - **检查更新**：面板顶部显示当前版本；点一下就去比对新版。已是最新→提示「无需更新」；
@@ -405,8 +413,8 @@ node plugin/lib/janitor.mjs --scan  /path/to/SillyTavern/data --dupes --dup-keep
 | POST | `/config` | 保存配置 |
 | POST | `/scan` | 开始扫描（后台跑，结果进 `/status`；`rules[id].items` 里含 `name/dir/type/size`） |
 | POST | `/scan/stream` | 扫描并**流式**回报进度（NDJSON，前端进度条用） |
-| POST | `/clean` | 开始清理，body：`{ rules?: string[], rels?: string[], dryRun?: boolean }` |
-| POST | `/clean/stream` | 清理并流式回报进度（同上）。带 `rels` = **只清选中的那些**（返回里有 `notFoundCount`） |
+| POST | `/clean` | 开始清理，body：`{ rules?: string[], rels?: string[], dryRun?: boolean, permanent?: boolean }` |
+| POST | `/clean/stream` | 清理并流式回报进度（同上）。带 `rels` = **只清选中的那些**（返回里有 `notFoundCount`）；`permanent: true` = **彻底删除**（不进回收站） |
 | GET | `/trash` | 回收站批次列表 |
 | POST | `/restore` | 还原某一批，body：`{ batch }` |
 | POST | `/empty-trash` | 清空回收站，body：`{ keepDays? }` |

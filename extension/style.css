@@ -117,3 +117,8 @@
   background: linear-gradient(90deg, #6b4cff, #a56bff) !important;
   border-color: transparent !important; color: #fff !important;
 }
+.stj-armed {
+  background: #c62828 !important; color: #fff !important; border-color: #c62828 !important;
+  animation: stj-pulse .9s ease-in-out infinite;
+}
+@keyframes stj-pulse { 50% { opacity: .6; } }

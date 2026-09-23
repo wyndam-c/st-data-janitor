@@ -537,7 +537,7 @@ function describeItem(rel, size, isDir, mtimeMs) {
     return { rel, name, dir, type, size: size || 0, mtimeMs: mtimeMs || 0 };
 }
 
-export function clean(config, { rules, dryRun = true, onlyEnabled = true, onProgress, rels } = {}) {
+export function clean(config, { rules, dryRun = true, onlyEnabled = true, onProgress, rels, permanent = false } = {}) {
     const root = resolveRoot(config);
     const targets = collectTargets(config, root, onProgress);
     const wanted = Array.isArray(rels) && rels.length ? new Set(rels.map(String)) : null;
@@ -559,18 +559,37 @@ export function clean(config, { rules, dryRun = true, onlyEnabled = true, onProg
         for (const r of wanted) if (!hit.has(r)) notFound.push(r);
     }
 
-    const result = { dataRoot: root, dryRun, batch: null, byRule: {}, moved: 0, bytes: 0, failed: [], notFound: notFound.slice(0, 50), notFoundCount: notFound.length };
+    const result = { dataRoot: root, dryRun, permanent: !!permanent, batch: null, byRule: {}, moved: 0, deleted: 0, bytes: 0, failed: [], notFound: notFound.slice(0, 50), notFoundCount: notFound.length };
     for (const [id, items] of Object.entries(picked)) {
         result.byRule[id] = { label: RULE_LABELS[id], count: items.length, bytes: items.reduce((s, it) => s + (it.size || 0), 0) };
     }
     if (dryRun) return result;
 
+    const moveTotal = Object.entries(picked).filter(([id]) => id !== 'emptyDirs').reduce((s, [, items]) => s + items.length, 0);
+    let moveDone = 0;
+
+    // ---- 彻底删除（不进回收站，不可恢复）----
+    if (permanent) {
+        for (const [id, items] of Object.entries(picked)) {
+            for (const it of items) {
+                moveDone++;
+                if (moveDone % 20 === 0 || moveDone === moveTotal) emit(onProgress, { phase: 'move', done: moveDone, total: moveTotal });
+                try {
+                    if (id === 'emptyDirs') fs.rmdirSync(it.abs);          // 只删空目录，非空会报错
+                    else fs.unlinkSync(it.abs);
+                    result.deleted++; result.bytes += it.size || 0;
+                } catch (e) {
+                    result.failed.push({ rel: it.rel, error: String(e.message || e) });
+                }
+            }
+        }
+        purgeTrash(config, { keepDays: Number(config?.trashKeepDays) || 7 });
+        return result;
+    }
+
     const batchId = new Date().toISOString().replace(/[:.]/g, '-');
     const batchDir = path.join(trashRoot(root), batchId);
     const manifest = { batchId, createdAt: new Date().toISOString(), dataRoot: root, entries: [] };
-
-    const moveTotal = Object.entries(picked).filter(([id]) => id !== 'emptyDirs').reduce((s, [, items]) => s + items.length, 0);
-    let moveDone = 0;
     for (const [id, items] of Object.entries(picked)) {
         if (id === 'emptyDirs') continue;   // 空目录不搬运，直接 rmdir
         for (const it of items) {

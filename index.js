@@ -188,6 +188,119 @@
         }
     }
 
+    // ---------------------------------------------------------- 进度弹窗
+    let barPct = 0;
+    const RULE_LABEL = Object.fromEntries(RULES.map(r => [r.id, r.label]));
+    const SCOPE_LABEL = Object.fromEntries(DUP_SCOPES.map(s => [s.id, s.label]));
+
+    function openProgress(title) {
+        const m = $el('stj_modal'); if (!m) return;
+        barPct = 0;
+        $el('stj_modal_title').textContent = title;
+        $el('stj_modal_phase').textContent = '准备中…';
+        $el('stj_modal_pct').textContent = '0%';
+        $el('stj_bar').style.width = '0%';
+        $el('stj_modal_close').style.display = 'none';
+        m.style.display = 'flex';
+    }
+
+    function setProgress(pct, phaseText) {
+        pct = Math.max(0, Math.min(100, Number(pct) || 0));
+        if (pct < barPct) pct = barPct;   // 只前进，不后退
+        barPct = pct;
+        const bar = $el('stj_bar'); if (bar) bar.style.width = pct + '%';
+        const p = $el('stj_modal_pct'); if (p) p.textContent = Math.round(pct) + '%';
+        if (phaseText) { const ph = $el('stj_modal_phase'); if (ph) ph.textContent = phaseText; }
+    }
+
+    function closeProgress(delay) {
+        const hide = () => { const m = $el('stj_modal'); if (m) m.style.display = 'none'; };
+        if (delay) setTimeout(hide, delay); else hide();
+    }
+
+    /** 把服务端进度事件映射成 0-100 的整体百分比（扫描/清理两套刻度）。 */
+    function pctFor(kind, ev) {
+        const frac = (d, t) => (t > 0 ? Math.max(0, Math.min(1, d / t)) : 0);
+        const isClean = kind !== 'scan';
+        switch (ev.phase) {
+            case 'walk': return isClean ? 6 : 10;
+            case 'rule': return (isClean ? 12 : 20) + (isClean ? 18 : 25) * frac(ev.i, ev.total);
+            case 'dup': case 'dup-hash': return (isClean ? 30 : 45) + (isClean ? 30 : 50) * frac(ev.done, ev.total);
+            case 'move': return 60 + 38 * frac(ev.done, ev.total);
+            default: return null;
+        }
+    }
+
+    function phaseTextFor(ev) {
+        switch (ev.phase) {
+            case 'walk': return `遍历目录… 已看 ${ev.scanned || 0} 个文件`;
+            case 'rule': return `检查规则：${ev.label || RULE_LABEL[ev.id] || ev.id}（${ev.i}/${ev.total}）`;
+            case 'dup': return `去重：${SCOPE_LABEL[ev.group] || ev.group} · ${ev.dir}（${ev.done}/${ev.total}）`;
+            case 'dup-hash': return `比对文件内容… ${ev.done}/${ev.total}`;
+            case 'move': return `移入回收站… ${ev.done}/${ev.total}`;
+            default: return null;
+        }
+    }
+
+    /** 跑一个带进度的任务：POST → 读 NDJSON 流 → 更新弹窗进度条。 */
+    async function streamJob(path, body, title, kind) {
+        openProgress(title);
+        setStatus('⏳ ' + title, 'stj-busy');
+        let report = null, serverErr = null;
+        const handle = (ev) => {
+            if (ev.type === 'progress') {
+                const p = pctFor(kind, ev);
+                setProgress(p == null ? barPct : p, phaseTextFor(ev) || undefined);
+            } else if (ev.type === 'result') {
+                report = ev.report; setProgress(100, '完成');
+            } else if (ev.type === 'error') {
+                serverErr = ev.error;
+            }
+        };
+        try {
+            const headers = getCtx().getRequestHeaders();
+            headers['Content-Type'] = 'application/json';
+            const res = await fetch(`${API}${path}`, { method: 'POST', headers, body: JSON.stringify(body || {}) });
+            if (!res.ok) {
+                const t = await res.text();
+                let msg = t; try { msg = JSON.parse(t).error || t; } catch { /* keep */ }
+                throw new Error(String(msg).slice(0, 200));
+            }
+            if (res.body && typeof res.body.getReader === 'function') {
+                const reader = res.body.getReader();
+                const dec = new TextDecoder();
+                let buf = '';
+                for (;;) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    buf += dec.decode(value, { stream: true });
+                    let i;
+                    while ((i = buf.indexOf('\n')) >= 0) {
+                        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                        if (!line) continue;
+                        try { handle(JSON.parse(line)); } catch { /* 忽略半行 */ }
+                    }
+                }
+                if (buf.trim()) { try { handle(JSON.parse(buf.trim())); } catch { /* ignore */ } }
+            } else {
+                const t = await res.text();   // 退化：服务端不支持流式
+                for (const line of t.split('\n')) { if (line.trim()) { try { handle(JSON.parse(line)); } catch { /* ignore */ } } }
+            }
+        } catch (e) {
+            serverErr = e.message;
+        }
+        if (serverErr) {
+            $el('stj_modal_title').textContent = '任务失败';
+            setProgress(barPct, '出错：' + serverErr);
+            $el('stj_modal_close').style.display = '';
+            setStatus('⚠️ 任务失败：' + serverErr, 'stj-bad');
+        } else {
+            closeProgress(500);
+            await refresh();
+        }
+        return report;
+    }
+
     function buildHtml() {
         const ruleRows = RULES.map(r => `
       <div class="stj-rule">
@@ -253,6 +366,14 @@
     <div class="stj-sub">回收站</div>
     <div class="stj-trash" id="stj_trash"></div>
   </div>
+</div>
+<div class="stj-modal" id="stj_modal">
+  <div class="stj-modal-box">
+    <div class="stj-modal-title" id="stj_modal_title">正在处理…</div>
+    <div class="stj-bar"><div class="stj-bar-fill" id="stj_bar"></div></div>
+    <div class="stj-modal-line"><span id="stj_modal_phase">准备中…</span><span id="stj_modal_pct">0%</span></div>
+    <div class="stj-modal-actions"><div class="menu_button menu_button_small" id="stj_modal_close">关闭</div></div>
+  </div>
 </div>`;
     }
 
@@ -266,12 +387,13 @@
         }));
         $el('stj_mode_manual').addEventListener('change', toggleAutoBox);
         $el('stj_mode_auto').addEventListener('change', toggleAutoBox);
-        $el('stj_scan').addEventListener('click', () => act('扫描', () => api('/scan', { method: 'POST', body: {} })));
-        $el('stj_dry').addEventListener('click', () => act('试运行', () => api('/clean', { method: 'POST', body: { dryRun: true } })));
+        $el('stj_scan').addEventListener('click', () => streamJob('/scan/stream', {}, '正在扫描…', 'scan'));
+        $el('stj_dry').addEventListener('click', () => streamJob('/clean/stream', { dryRun: true }, '正在试运行…', 'clean'));
         $el('stj_go').addEventListener('click', () => {
             if (!confirm('确定清理？文件会先移入回收站（可还原），不是永久删除。')) return;
-            act('清理', () => api('/clean', { method: 'POST', body: { dryRun: false } }));
+            streamJob('/clean/stream', { dryRun: false }, '正在清理…', 'clean');
         });
+        $el('stj_modal_close').addEventListener('click', () => closeProgress());
         $el('stj_empt').addEventListener('click', () => {
             if (!confirm('彻底清空回收站？此操作不可撤销。')) return;
             act('清空回收站', async () => {

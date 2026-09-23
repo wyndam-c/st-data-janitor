@@ -39,3 +39,41 @@
 
 .stj-sub { margin: 12px 0 4px; font-weight: bold; opacity: .85; }
 .stj-trash-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .82em; padding: 4px 0; border-bottom: 1px solid rgba(128,128,128,.2); }
+
+/* ---- 进度弹窗 ---- */
+.stj-modal {
+  display: none;               /* 默认隐藏；打开时 JS 设为 flex */
+  position: fixed; inset: 0; z-index: 100000;
+  background: rgba(0, 0, 0, .55);
+  align-items: center; justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.stj-modal-box {
+  background: var(--SmartThemeBlurTintColor, #1f1f28);
+  color: var(--SmartThemeBodyColor, #eee);
+  border: 1px solid rgba(128, 128, 128, .35);
+  border-radius: 10px;
+  padding: 20px 22px;
+  width: min(420px, 88vw);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+}
+.stj-modal-title { font-size: 1.05em; font-weight: bold; margin-bottom: 14px; }
+.stj-bar {
+  height: 12px; border-radius: 6px; overflow: hidden;
+  background: rgba(128, 128, 128, .25);
+}
+.stj-bar-fill {
+  height: 100%; width: 0%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #6b4cff, #a56bff);
+  background-size: 24px 100%;
+  transition: width .25s ease;
+  animation: stj-stripes .8s linear infinite;
+  background-image: linear-gradient(45deg, rgba(255,255,255,.22) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.22) 50%, rgba(255,255,255,.22) 75%, transparent 75%, transparent), linear-gradient(90deg, #6b4cff, #a56bff);
+  background-size: 22px 22px, 100% 100%;
+}
+@keyframes stj-stripes { from { background-position: 0 0, 0 0; } to { background-position: 22px 0, 0 0; } }
+.stj-modal-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: .85em; }
+.stj-modal-line #stj_modal_phase { opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stj-modal-line #stj_modal_pct { font-variant-numeric: tabular-nums; opacity: .9; flex: 0 0 auto; }
+.stj-modal-actions { display: flex; justify-content: flex-end; margin-top: 14px; }

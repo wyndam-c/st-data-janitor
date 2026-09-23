@@ -2,6 +2,15 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+### 修复
+
+- **发布流程改为线性历史，`git pull` 永不失败**：`publish.sh` 不再用 `git subtree split` + `git push -f`
+  （会改写 `plugin-dist` / `ext-dist` 分支历史，导致酒馆自动更新报
+  `Not possible to fast-forward, aborting`）。改为把目录树做成新提交、父提交指向远端分支当前 tip，
+  天然 fast-forward；内容未变时会自动跳过。此变更**不影响工具本身**，版本号不变。
+
 ## [1.1.0] — 2026-09-24
 
 新增第 8 条规则：**重复文件去重**（角色卡 / 世界书 / 预设 / 主题 / 快捷回复）。

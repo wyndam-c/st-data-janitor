@@ -317,6 +317,10 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
 
 > ⚠️ **发新版时先跑 `./publish.sh`**（重新生成并推送两条发布分支），否则酒馆拉到的还是旧代码。
 >
+> 🧷 两条发布分支是**线性历史**（每次发版只是在旧 tip 上追加一个提交），因此酒馆的 `git pull`
+> 永远是 fast-forward，不会出现 `Not possible to fast-forward, aborting` 而更新失败。
+> （早期版本的 `publish.sh` 用 `git subtree split` + `git push -f`，会改写历史，已弃用。）
+>
 > 💡 如果你在用云同步工具同步 `data` 目录：请把 **`.git`** 加入同步的排除名单。
 > 否则两台机器各自的 Git 元数据会互相打架，生出成堆 ` (conflict_on_…)` 副本。
 

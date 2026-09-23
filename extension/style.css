@@ -40,40 +40,44 @@
 .stj-sub { margin: 12px 0 4px; font-weight: bold; opacity: .85; }
 .stj-trash-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: .82em; padding: 4px 0; border-bottom: 1px solid rgba(128,128,128,.2); }
 
-/* ---- 进度弹窗 ---- */
+/* ---- 进度弹窗（挂 body，全屏遮罩 + 居中大卡片）---- */
 .stj-modal {
   display: none;               /* 默认隐藏；打开时 JS 设为 flex */
-  position: fixed; inset: 0; z-index: 100000;
-  background: rgba(0, 0, 0, .55);
+  position: fixed; inset: 0; z-index: 2147483000;
+  background: rgba(0, 0, 0, .62);
   align-items: center; justify-content: center;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(3px);
 }
 .stj-modal-box {
   background: var(--SmartThemeBlurTintColor, #1f1f28);
   color: var(--SmartThemeBodyColor, #eee);
-  border: 1px solid rgba(128, 128, 128, .35);
-  border-radius: 10px;
-  padding: 20px 22px;
-  width: min(420px, 88vw);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+  border: 1px solid rgba(150, 120, 255, .55);
+  border-radius: 14px;
+  padding: 26px 28px 18px;
+  width: min(600px, 92vw);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .65), inset 0 0 0 1px rgba(255, 255, 255, .04);
+  text-align: left;
 }
-.stj-modal-title { font-size: 1.05em; font-weight: bold; margin-bottom: 14px; }
+.stj-modal-title { font-size: 1.3em; font-weight: bold; margin-bottom: 18px; display: flex; align-items: center; gap: 10px; }
+.stj-spin { width: 17px; height: 17px; border-radius: 50%; flex: 0 0 auto;
+  border: 3px solid rgba(150, 120, 255, .3); border-top-color: #a56bff;
+  animation: stj-spin .8s linear infinite; }
+@keyframes stj-spin { to { transform: rotate(360deg); } }
 .stj-bar {
-  height: 12px; border-radius: 6px; overflow: hidden;
+  height: 20px; border-radius: 10px; overflow: hidden;
   background: rgba(128, 128, 128, .25);
 }
 .stj-bar-fill {
   height: 100%; width: 0%;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #6b4cff, #a56bff);
-  background-size: 24px 100%;
+  border-radius: 10px;
   transition: width .25s ease;
   animation: stj-stripes .8s linear infinite;
   background-image: linear-gradient(45deg, rgba(255,255,255,.22) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.22) 50%, rgba(255,255,255,.22) 75%, transparent 75%, transparent), linear-gradient(90deg, #6b4cff, #a56bff);
   background-size: 22px 22px, 100% 100%;
 }
 @keyframes stj-stripes { from { background-position: 0 0, 0 0; } to { background-position: 22px 0, 0 0; } }
-.stj-modal-line { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: .85em; }
-.stj-modal-line #stj_modal_phase { opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stj-modal-line #stj_modal_pct { font-variant-numeric: tabular-nums; opacity: .9; flex: 0 0 auto; }
+.stj-modal-line { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; margin-top: 14px; font-size: .95em; }
+.stj-modal-line #stj_modal_phase { opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stj-modal-line #stj_modal_pct { font-size: 1.7em; font-weight: bold; opacity: .95; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.stj-modal-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: .78em; opacity: .6; }
 .stj-modal-actions { display: flex; justify-content: flex-end; margin-top: 14px; }

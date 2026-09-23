@@ -112,6 +112,26 @@ else
   echo "   ⚠️ CHANGELOG 里没有 [未发布] 也没有 [$NEW]，请手动补一节" >&2
 fi
 
+# 4b) 保证新版本小节排在最前（有些仓库把「未发布」放在中间）
+python3 - "$CHANGELOG" "$NEW" <<'PY'
+import re, sys
+path, ver = sys.argv[1], sys.argv[2]
+txt = open(path, encoding='utf-8').read()
+pat = re.compile(r'^## \[' + re.escape(ver) + r'\][^\n]*\n.*?(?=^## \[|\Z)', re.S | re.M)
+m = pat.search(txt)
+if not m:
+    sys.exit(0)
+sec = m.group(0).rstrip() + '\n\n'
+rest = txt[:m.start()] + txt[m.end():]
+m2 = re.search(r'^## \[', rest, re.M)
+if not m2:
+    sys.exit(0)
+out = rest[:m2.start()] + sec + rest[m2.start():]
+if out != txt:
+    open(path, 'w', encoding='utf-8').write(out)
+    print(f'   CHANGELOG：已把 [{ver}] 提到最前')
+PY
+
 echo
 echo "== 改动 =="
 git --no-pager diff --stat

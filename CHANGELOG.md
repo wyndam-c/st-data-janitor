@@ -2,6 +2,21 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.1] — 2026-09-24
+
+### 改进
+
+- **进度弹窗改为挂在页面最外层（`document.body`）**。之前的弹窗是插在扩展面板里的，会被面板自身的
+  定位/滚动上下文限制，显得又小又不显眼；现在改成**全屏遮罩 + 居中大卡片**：进度条加粗、百分比字号加大、
+  新增「已用时间」实时计时和转圈动效；扫描/清理结束后还会再弹一条汇总提示。（纯前端改动，刷新页面即生效）
+
+### 修复
+
+- **发布流程改为线性历史，`git pull` 永不失败**：`publish.sh` 不再用 `git subtree split` + `git push -f`
+  （会改写 `plugin-dist` / `ext-dist` 分支历史，导致酒馆自动更新报
+  `Not possible to fast-forward, aborting`）。改为把目录树做成新提交、父提交指向远端分支当前 tip，
+  天然 fast-forward；内容未变时会自动跳过。此变更**不影响工具本身**，版本号不变。
+
 ## [1.2.0] — 2026-09-24
 
 ### 新增
@@ -12,15 +27,6 @@
   `.../clean/stream`；核心库 `scan()` / `clean()` / `collectTargets()` / `collectDuplicates()`
   均支持可选的 `onProgress` 回调（CLI 不用时可忽略）。
 - 前端若遇到不支持流式的旧服务端，会自动退化为“一次性拿结果”，不影响使用。
-
-## [未发布]
-
-### 修复
-
-- **发布流程改为线性历史，`git pull` 永不失败**：`publish.sh` 不再用 `git subtree split` + `git push -f`
-  （会改写 `plugin-dist` / `ext-dist` 分支历史，导致酒馆自动更新报
-  `Not possible to fast-forward, aborting`）。改为把目录树做成新提交、父提交指向远端分支当前 tip，
-  天然 fast-forward；内容未变时会自动跳过。此变更**不影响工具本身**，版本号不变。
 
 ## [1.1.0] — 2026-09-24
 

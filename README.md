@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![SillyTavern](https://img.shields.io/badge/SillyTavern-server%20plugin-7c3aed.svg)](https://github.com/SillyTavern/SillyTavern)
 [![Version](https://img.shields.io/badge/version-1.0.0-brightgreen.svg)](CHANGELOG.md)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Docker%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#-安装)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker%20%7C%20Android-lightgrey.svg)](#-安装)
 
 ---
 
@@ -115,7 +115,22 @@
   ```
 - 说明：本插件由「**服务端插件** + **前端扩展**」两部分组成，缺一不可。
 
-### 方式一：安装脚本（推荐）
+两个落点（后文用 `<ST>` 表示酒馆的**服务端目录**，用户名默认 `default-user`）：
+
+| 装什么 | 放哪里 |
+| --- | --- |
+| 服务端插件 | `<ST>/plugins/st-data-janitor/`（`index.mjs` + `lib/janitor.mjs`） |
+| 前端扩展 | `<ST>/data/<用户名>/extensions/st-data-janitor/`（`manifest.json` + `index.js` + `style.css`） |
+
+> 📌 **先确认你的 `<ST>` 在哪**
+>
+> - **Standalone 模式**（默认）：`<ST>` 就是 SillyTavern 的安装目录。
+> - **Global 模式**（启动脚本带了 `--global`）：配置与数据**不在**安装目录，而在
+>   - Windows：`%APPDATA%\SillyTavern\`
+>   - macOS：`~/Library/Application Support/SillyTavern/`
+>   - Linux：`~/.local/share/SillyTavern/`
+
+### 方式一：安装脚本（推荐，Linux / macOS / NAS）
 
 ```bash
 git clone https://github.com/wyndam-c/st-data-janitor.git
@@ -123,7 +138,7 @@ cd st-data-janitor
 sudo ./install.sh /path/to/SillyTavern            # 第二个参数=用户名，默认 default-user
 ```
 
-### 方式二：手动复制
+### 方式二：手动复制（任何平台通用）
 
 ```bash
 # 服务端插件
@@ -135,6 +150,132 @@ cp plugin/lib/janitor.mjs  /path/to/SillyTavern/plugins/st-data-janitor/lib/
 mkdir -p /path/to/SillyTavern/data/default-user/extensions/st-data-janitor
 cp extension/* /path/to/SillyTavern/data/default-user/extensions/st-data-janitor/
 ```
+
+### 方式三：各平台分步教程
+
+> 下面所有命令里的路径都请换成你自己的。核心只有三件事：**把两类文件放对地方 → 开 `enableServerPlugins` → 重启酒馆**。
+
+#### 🪟 Windows
+
+酒馆一般安装在 `C:\SillyTavern`（官方建议放在**不受系统监控的目录**，不要放桌面 / 文档）。
+
+1. 装好 [Node.js LTS](https://nodejs.org/) 与 [Git for Windows](https://gitforwindows.org/)（酒馆官方前置）。
+2. 开 **PowerShell**，一次性拷进去：
+
+```powershell
+$ST = "C:\SillyTavern"                            # ← 改成你的酒馆目录
+$EXT = "$ST\data\default-user\extensions\st-data-janitor"
+
+git clone https://github.com/wyndam-c/st-data-janitor.git "$env:TEMP\stj"
+New-Item -ItemType Directory -Force "$ST\plugins\st-data-janitor\lib", $EXT | Out-Null
+Copy-Item "$env:TEMP\stj\plugin\index.mjs"       "$ST\plugins\st-data-janitor\"
+Copy-Item "$env:TEMP\stj\plugin\lib\janitor.mjs" "$ST\plugins\st-data-janitor\lib\"
+Copy-Item "$env:TEMP\stj\extension\*"            $EXT
+```
+
+3. 用记事本打开 `config.yaml`（在酒馆目录里），确保有这一行（没有就加上）：
+
+```yaml
+enableServerPlugins: true
+```
+
+4. **双击 `Start.bat`** 重启酒馆。黑窗口里出现 `[st-data-janitor] ready` 即为成功。
+
+> 不想打命令？用资源管理器手建两个文件夹，把 `plugin/index.mjs`、`plugin/lib/janitor.mjs`、`extension/` 里那三个文件分别拖进去即可（效果完全一样）。
+
+#### 🍎 macOS
+
+（酒馆本体安装见官方 [Linux & Mac 向导](https://docs.sillytavern.app/installation/linuxmacos/)）
+
+```bash
+ST=~/SillyTavern                                  # ← 改成你的酒馆目录
+
+git clone https://github.com/wyndam-c/st-data-janitor.git /tmp/stj
+mkdir -p "$ST/plugins/st-data-janitor/lib" "$ST/data/default-user/extensions/st-data-janitor"
+cp /tmp/stj/plugin/index.mjs       "$ST/plugins/st-data-janitor/"
+cp /tmp/stj/plugin/lib/janitor.mjs "$ST/plugins/st-data-janitor/lib/"
+cp /tmp/stj/extension/*            "$ST/data/default-user/extensions/st-data-janitor/"
+
+nano "$ST/config.yaml"      # 确认 enableServerPlugins: true
+cd "$ST" && ./start.sh       # 重启（先 Ctrl+C 停掉旧的）
+```
+
+> 或者直接用脚本：`sudo ./install.sh ~/SillyTavern`
+
+#### 🐧 Linux / NAS（群晖 · 飞牛 fnOS · Unraid 等）
+
+与 macOS 命令完全一样，只改 `ST=`：
+
+```bash
+ST=/root/SillyTavern      # 群晖常见 /volume1/docker/sillytavern；飞牛常见 /vol1/...
+# ……同上那四行 mkdir / cp……
+sudo nano "$ST/config.yaml"   # enableServerPlugins: true
+cd "$ST" && npm start         # 或你平时用的启动方式（PM2 / systemd / 宝塔 Node 项目）
+```
+
+> 🔌 本 README 开头那套「一键更新」（把目录变成 Git 仓库）在 Linux / NAS 上体验最好，推荐搭配使用。
+
+#### 🤖 Android（Termux）
+
+1. 从 [F-Droid](https://f-droid.org/en/packages/com.termux/) 或 [GitHub Releases](https://github.com/termux/termux-app/releases) 装 **Termux**（Play 商店版已停止维护，别用）。
+2. 装依赖：
+
+```bash
+pkg update && pkg upgrade
+pkg install -y git nodejs-lts
+```
+
+3. 拷插件（Termux 里的酒馆通常在 `~/SillyTavern`）：
+
+```bash
+cd ~/SillyTavern
+git clone https://github.com/wyndam-c/st-data-janitor.git ~/stj
+mkdir -p ~/SillyTavern/plugins/st-data-janitor/lib \
+         ~/SillyTavern/data/default-user/extensions/st-data-janitor
+cp ~/stj/plugin/index.mjs       ~/SillyTavern/plugins/st-data-janitor/
+cp ~/stj/plugin/lib/janitor.mjs ~/SillyTavern/plugins/st-data-janitor/lib/
+cp ~/stj/extension/*            ~/SillyTavern/data/default-user/extensions/st-data-janitor/
+nano ~/SillyTavern/config.yaml   # 加一行 enableServerPlugins: true
+```
+
+4. 重启：`cd ~/SillyTavern && bash start.sh`（先 Ctrl+C 停掉旧进程）。
+
+手机的坑：
+
+- **Termux 里没有 `sudo`** → 别用 `install.sh`，按上面手拷就行。
+- 跑之前先 `termux-wake-lock`，否则屏幕一黑系统就把 Termux 冻死，插件也不会跑。
+- 手机存储紧张的话，把回收站保留天数 `trashKeepDays` 调小（默认 7 天），或定期点「清空回收站」。
+- 想看文件：用支持 root/Android 目录的文件管理器（如 Material Files）打开 `/data/data/com.termux/files/home/`。
+
+#### 🐳 Docker（含 NAS 里的 Docker）
+
+以官方 compose 的默认映射为例：宿主机 `./plugins` → 容器 `/home/node/app/plugins`，`./data` → 容器 `/home/node/app/data`，`./config` → 容器 `/home/node/app/config`。
+**在 compose 文件所在目录**执行：
+
+```bash
+git clone https://github.com/wyndam-c/st-data-janitor.git /tmp/stj
+mkdir -p ./plugins/st-data-janitor/lib ./data/default-user/extensions/st-data-janitor
+cp /tmp/stj/plugin/index.mjs       ./plugins/st-data-janitor/
+cp /tmp/stj/plugin/lib/janitor.mjs ./plugins/st-data-janitor/lib/
+cp /tmp/stj/extension/*            ./data/default-user/extensions/st-data-janitor/
+
+grep -q 'enableServerPlugins: true' ./config/config.yaml \
+  || echo 'enableServerPlugins: true' >> ./config/config.yaml
+
+docker compose restart          # 或：docker restart sillytavern
+```
+
+> ⚠️ 你的映射目录名可能不同（如 `SILLYTAVERN_DATA=/volume1/docker/st/data`），按你的 compose 来。
+> 看日志：`docker logs -f sillytavern | grep -i janitor`
+> 容器内 `data` 也是同步的：如果 `data` 挂在网络盘上，回收站会建在数据目录的**同级**（容器内 `<ST>/.janitor-trash`）。
+
+### 怎么确认装好了？
+
+1. 重启后看酒馆启动日志，应该有这两行：
+   - `Initializing plugin from .../st-data-janitor/index.mjs`
+   - `[st-data-janitor] ready · dataRoot=... · 手动`
+2. 网页里 → 顶部「扩展」→ 找到「**数据清洁工**」。
+3. 没装进酒馆也能先验证：`node <ST>/plugins/st-data-janitor/lib/janitor.mjs --scan <ST>/data`
 
 ### 最后一步：重启 SillyTavern
 

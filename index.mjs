@@ -42,7 +42,7 @@ const REPO_URL = `https://github.com/${REPO_SLUG}`;
 export const info = {
     id: 'st-data-janitor',
     name: 'ST Data Janitor',
-    version: '1.6.1',
+    version: '1.7.0',
     description: '自动清理 SillyTavern data 目录中的无用/多余数据（冲突副本、临时残留、垃圾文件、过量备份、角色卡/世界书/预设去重等），删除前先入回收站。',
 };
 
@@ -203,6 +203,13 @@ export async function init(router) {
             config: cfg,
             rules: RULE_LABELS,
             trash: safe(() => listTrash(cfg)),
+            // 运行环境：让前端引导卡知道「服务端」是什么系统（浏览器 UA 只能反映手机/电脑，不等于酒馆所在机器）
+            env: {
+                platform: process.platform,
+                arch: process.arch,
+                node: process.version,
+                termux: !!(process.env.PREFIX && String(process.env.PREFIX).includes('com.termux')),
+            },
         });
     });
 

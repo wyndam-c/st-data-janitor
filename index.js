@@ -75,6 +75,121 @@
             + `<table class="stj-table"><thead><tr><th>规则</th><th>数量</th><th>体积</th></tr></thead><tbody>${rows}</tbody></table>${tail}`;
     }
 
+    // ------------------------------------------------ 扫描预览 / 勾选清理
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmtType = (t) => (t === '目录' ? '目录' : t === '无扩展名' ? '(无扩展名)' : '.' + t);
+
+    let previewKey = null;
+    let previewRules = {};           // ruleId -> items[]
+    const previewSel = new Set();    // 勾选的 rel
+    let previewSize = new Map();     // rel -> size
+    const PREVIEW_MAX_ROWS = 1000;
+
+    function updateSelCount() {
+        let n = 0, bytes = 0;
+        for (const rel of previewSel) { n++; bytes += previewSize.get(rel) || 0; }
+        const el = $el('stj_pv_sel');
+        if (el) el.textContent = `已选 ${n} 项 / ${fmtBytes(bytes)}`;
+    }
+
+    function applyChecks(scope) {
+        if (!scope) return;
+        scope.querySelectorAll('.stj-pv-cb').forEach(cb => {
+            const on = previewSel.has(cb.dataset.rel);
+            cb.checked = on;
+            const row = cb.closest('.stj-pv-row');
+            if (row) row.classList.toggle('on', on);
+        });
+    }
+
+    /** 扫描结果的逐文件预览（名字 / 目录 / 格式 / 大小 + 勾选） */
+    function renderPreview(rep) {
+        const box = $el('stj_preview');
+        if (!box) return;
+        const key = rep ? `${rep.kind || 'scan'}@${rep.generatedAt || rep.at || ''}` : null;
+        if (key === previewKey) return;          // 轮询时不动，保住勾选
+        previewKey = key;
+        previewSel.clear(); previewSize = new Map(); previewRules = {};
+        if (!rep || (rep.kind && rep.kind !== 'scan')) { box.innerHTML = ''; return; }
+        const groups = Object.entries(rep.rules || {}).filter(([, r]) => (r.items || []).length);
+        if (!groups.length) { box.innerHTML = '<div class="stj-dim">这次扫描没扫出可清理的文件 🎉</div>'; return; }
+
+        let html = '<div class="stj-pv-bar"><span class="stj-pv-title">扫描结果预览 · 勾选后只清选中的</span>'
+            + '<span class="menu_button menu_button_small" data-pv="all">全选</span>'
+            + '<span class="menu_button menu_button_small" data-pv="none">清空选择</span></div>';
+        for (const [id, r] of groups) {
+            previewRules[id] = r.items;
+            for (const it of r.items) previewSize.set(it.rel, it.size || 0);
+            const rows = r.items.slice(0, PREVIEW_MAX_ROWS).map(it => `
+              <label class="stj-pv-row" title="${esc(it.rel)}">
+                <input type="checkbox" class="stj-pv-cb" data-rel="${esc(it.rel)}">
+                <span class="stj-pv-name">${esc(it.name)}</span>
+                <span class="stj-pv-dir">${esc(it.dir || '/')}</span>
+                <span class="stj-pv-type">${esc(fmtType(it.type))}</span>
+                <span class="stj-pv-size">${fmtBytes(it.size)}</span>
+              </label>`).join('');
+            html += `<div class="stj-pv-group" data-rule="${esc(id)}">
+              <div class="stj-pv-head">
+                <span><b>${esc(r.label)}</b></span>
+                <span class="stj-pv-count">${r.count} 项 · ${fmtBytes(r.bytes)}${r.truncated ? ' · 列表已截断' : ''}</span>
+                <span class="stj-pv-actions">
+                  <span class="menu_button menu_button_small" data-pv-rule="${esc(id)}" data-pv-act="all">全选</span>
+                  <span class="menu_button menu_button_small" data-pv-rule="${esc(id)}" data-pv-act="none">清空</span>
+                </span>
+              </div>
+              <div class="stj-pv-list">${rows}</div>
+            </div>`;
+        }
+        html += '<div class="stj-pv-foot">'
+            + '<span class="stj-pv-sel" id="stj_pv_sel">已选 0 项 / 0 B</span>'
+            + '<span class="menu_button menu_button_small" data-pv="drysel">试运行选中</span>'
+            + '<span class="menu_button menu_button_small stj-danger" data-pv="gosel">清理选中项</span>'
+            + '</div>';
+        box.innerHTML = html;
+        updateSelCount();
+    }
+
+    function bindPreview() {
+        const box = $el('stj_preview');
+        if (!box || box.dataset.bound) return;
+        box.dataset.bound = '1';
+        box.addEventListener('change', (e) => {
+            const cb = e.target.closest && e.target.closest('.stj-pv-cb');
+            if (!cb) return;
+            if (cb.checked) previewSel.add(cb.dataset.rel); else previewSel.delete(cb.dataset.rel);
+            const row = cb.closest('.stj-pv-row');
+            if (row) row.classList.toggle('on', cb.checked);
+            updateSelCount();
+        });
+        box.addEventListener('click', (e) => {
+            const btn = e.target.closest && e.target.closest('[data-pv],[data-pv-rule]');
+            if (!btn || btn.tagName === 'INPUT') return;
+            const ruleAct = btn.dataset.pvAct, ruleId = btn.dataset.pvRule;
+            if (ruleAct && ruleId) {
+                for (const it of previewRules[ruleId] || []) { if (ruleAct === 'all') previewSel.add(it.rel); else previewSel.delete(it.rel); }
+                applyChecks(btn.closest('.stj-pv-group'));
+            } else {
+                const a = btn.dataset.pv;
+                if (a === 'all') { for (const list of Object.values(previewRules)) for (const it of list) previewSel.add(it.rel); applyChecks(box); }
+                else if (a === 'none') { previewSel.clear(); applyChecks(box); }
+                else if (a === 'drysel') { cleanSelected(true); }
+                else if (a === 'gosel') { cleanSelected(false); }
+            }
+            updateSelCount();
+        });
+    }
+
+    async function cleanSelected(dry) {
+        const rels = [...previewSel];
+        if (!rels.length) { try { toastr.warning('先勾选要清理的文件'); } catch { /* ignore */ } return; }
+        const size = rels.reduce((s, r) => s + (previewSize.get(r) || 0), 0);
+        const msg = dry
+            ? `试运行：检查选中的 ${rels.length} 项（${fmtBytes(size)}）？`
+            : `确定清理选中的 ${rels.length} 项 / ${fmtBytes(size)}？\n\n文件会先移入回收站（可还原），不是永久删除。`;
+        if (!confirm(msg)) return;
+        await streamJob('/clean/stream', { dryRun: dry, rels }, dry ? '正在试运行（选中项）…' : '正在清理（选中项）…', 'clean');
+    }
+
     function renderTrash(trash) {
         const box = $el('stj_trash');
         if (!box) return;
@@ -162,6 +277,7 @@
             else if (s.error) setStatus(`⚠️ 上次任务出错：${s.error}`, 'stj-bad');
             else setStatus('就绪 · ' + (s.auto?.mode === 'auto' ? `自动：${s.auto.text}` : '手动'), '');
             renderReport(s.lastReport);
+            renderPreview(s.lastReport);
             renderTrash(s.trash);
             return s;
         } catch (e) {
@@ -197,6 +313,18 @@
     <div class="stj-modal-line"><span id="stj_modal_phase">准备中…</span><span id="stj_modal_pct">0%</span></div>
     <div class="stj-modal-meta"><span id="stj_elapsed">已用 0.0 秒</span><span class="stj-dim">跑完会自动消失</span></div>
     <div class="stj-modal-actions"><div class="menu_button menu_button_small" id="stj_modal_close">关闭</div></div>
+  </div>
+</div>
+<div class="stj-modal" id="stj_upd_modal">
+  <div class="stj-modal-box">
+    <div class="stj-modal-title"><span class="stj-upd-dot"></span><span id="stj_upd_title">发现新版本</span></div>
+    <div class="stj-upd-sub" id="stj_upd_sub"></div>
+    <pre class="stj-notes" id="stj_upd_notes"></pre>
+    <div class="stj-modal-meta"><span id="stj_upd_time"></span><span class="stj-dim">更新会从发布分支拉取最新代码</span></div>
+    <div class="stj-modal-actions">
+      <div class="menu_button menu_button_small" id="stj_upd_cancel">取消</div>
+      <div class="menu_button menu_button_small stj-primary" id="stj_upd_go">立即更新</div>
+    </div>
   </div>
 </div>`;
 
@@ -331,17 +459,87 @@
             closeProgress(600);
             try {
                 if (report) {
-                    const lines = Array.isArray(report.rules) ? report.rules : [];
-                    const tot = lines.reduce((a, r) => ({ count: a.count + (r.count || 0), bytes: a.bytes + (r.bytes || 0) }), { count: 0, bytes: 0 });
+                    const byRule = report.rules || {};
+                    const list = Array.isArray(byRule) ? byRule : Object.values(byRule);
+                    const sum = list.reduce((a, r) => ({ count: a.count + (r.count || 0), bytes: a.bytes + (r.bytes || 0) }), { count: 0, bytes: 0 });
                     const msg = kind === 'scan'
-                        ? `扫描完成：可清 ${tot.count} 项 / ${fmtBytes(tot.bytes)}`
-                        : `清理完成：移动 ${report.moved ?? 0} 项 / ${fmtBytes(report.bytes ?? 0)}`;
+                        ? `扫描完成：可清 ${report.total?.count ?? sum.count} 项 / ${fmtBytes(report.total?.bytes ?? sum.bytes)}`
+                        : `清理完成：${report.moved ?? 0} 项 / ${fmtBytes(report.bytes ?? 0)}${report.failed?.length ? ` · 失败 ${report.failed.length}` : ''}${report.notFoundCount ? ` · 跳过 ${report.notFoundCount}` : ''}`;
                     toastr.success(msg);
                 }
             } catch { /* ignore */ }
+            renderPreview(report);   // 扫描完直接把列表画出来
+            if (report && kind !== 'scan' && (report.moved || 0) > 0) {
+                try { await api('/scan', { method: 'POST' }); } catch { /* ignore */ }   // 真删除后自动重扫，列表自己刷新
+            }
             await refresh();
         }
         return report;
+    }
+
+    // ---------------------------------------------------------- 检查更新
+    function setVersionLabel(cur, latest, hasUpdate) {
+        const v = $el('stj_ver'); if (v) v.textContent = 'v' + (cur || '?');
+        const h = $el('stj_updhint');
+        if (h) h.innerHTML = hasUpdate ? `· 有新版本 <b>v${latest}</b>` : (cur ? '· 已是最新' : '');
+    }
+
+    async function checkUpdate(manual = true) {
+        const btn = $el('stj_updchk');
+        const oldLabel = btn ? btn.textContent : '检查更新';
+        if (btn) { btn.textContent = '检查中…'; }
+        try {
+            const r = await api('/update-check');
+            if (!r.ok) throw new Error(r.error || '检查失败');
+            setVersionLabel(r.current, r.latest, r.hasUpdate);
+            if (r.hasUpdate) openUpdateModal(r);
+            else if (manual) toastr.success(`已经是最新版本 v${r.current}，无需更新`);
+            return r;
+        } catch (e) {
+            const m = '检查更新失败：' + e.message;
+            if (manual) toastr.error(m); else setStatus('⚠️ ' + m, 'stj-bad');
+            return null;
+        } finally {
+            if (btn) btn.textContent = oldLabel || '检查更新';
+        }
+    }
+
+    function openUpdateModal(r) {
+        const m = $el('stj_upd_modal'); if (!m) return;
+        $el('stj_upd_title').textContent = `发现新版本 v${r.latest}`;
+        $el('stj_upd_sub').innerHTML = `当前版本 <b>v${r.current}</b> → 可更新到 <b>v${r.latest}</b>`;
+        $el('stj_upd_notes').textContent = r.notes ? r.notes : '（本次更新没有写说明）';
+        $el('stj_upd_time').textContent = '检查于 ' + new Date(r.checkedAt || Date.now()).toLocaleTimeString();
+        const go = $el('stj_upd_go'), cancel = $el('stj_upd_cancel');
+        if (go) { go.textContent = '立即更新'; go.dataset.busy = ''; }
+        if (cancel) cancel.style.display = '';
+        m.style.display = 'flex';
+    }
+    function closeUpdateModal() { const m = $el('stj_upd_modal'); if (m) m.style.display = 'none'; }
+
+    async function applyUpdate() {
+        const go = $el('stj_upd_go'), cancel = $el('stj_upd_cancel');
+        if (!go || go.dataset.busy) return;
+        go.textContent = '更新中…'; go.dataset.busy = '1';
+        if (cancel) cancel.style.display = 'none';
+        try {
+            const r = await api('/update-apply', { method: 'POST', body: {} });
+            if (!r.ok) throw new Error(r.error || '更新失败');
+            closeUpdateModal();
+            toastr.success(r.message || `已更新到 v${r.to}`);
+            setVersionLabel(r.to, r.to, false);
+            if (r.restartNeeded) {
+                setStatus(`✅ 已更新到 v${r.to} · 服务端插件需重启酒馆才生效`, '');
+                try { toastr.warning('服务端插件要重启酒馆才生效；前端扩展刷新页面即可。', '更新完成', { timeOut: 15000 }); } catch { /* ignore */ }
+            } else {
+                setStatus(`✅ 已更新到 v${r.to} · 刷新页面即生效`, '');
+            }
+            await refresh();
+        } catch (e) {
+            if (go) { go.textContent = '立即更新'; go.dataset.busy = ''; }
+            if (cancel) cancel.style.display = '';
+            toastr.error('更新失败：' + e.message);
+        }
     }
 
     function buildHtml() {
@@ -379,6 +577,11 @@
   <div class="inline-drawer-content">
     <div class="stj-status" id="stj_status">加载中…</div>
     <div class="stj-hint">删东西前 <b>先入回收站</b>，可随时还原；默认只「试运行」不真删。</div>
+    <div class="stj-row"><label>版本</label>
+      <span class="stj-ver" id="stj_ver">v?</span>
+      <span class="menu_button menu_button_small" id="stj_updchk">检查更新</span>
+      <span class="stj-dim" id="stj_updhint"></span>
+    </div>
     <div class="stj-rules">${ruleRows}</div>
     <div class="stj-row"><label>清理模式</label>
       <label class="stj-check"><input type="radio" name="stj_mode" id="stj_mode_manual" value="manual"> 手动</label>
@@ -406,6 +609,7 @@
       <div class="menu_button" id="stj_empt">清空回收站</div>
     </div>
     <div class="stj-report" id="stj_report"></div>
+    <div class="stj-preview" id="stj_preview"></div>
     <div class="stj-sub">回收站</div>
     <div class="stj-trash" id="stj_trash"></div>
   </div>
@@ -416,6 +620,7 @@
         if ($el('stj_status') || !document.getElementById('extensions_settings')) return;
         ensureModal();
         $('#extensions_settings').append(buildHtml());
+        bindPreview();
 
         $el('stj_save').addEventListener('click', () => act('保存配置', async () => {
             await api('/config', { method: 'POST', body: collectConfig() });
@@ -437,8 +642,14 @@
             });
         });
 
+        $el('stj_updchk').addEventListener('click', () => checkUpdate(true));
+        $el('stj_upd_cancel').addEventListener('click', () => closeUpdateModal());
+        $el('stj_upd_go').addEventListener('click', () => applyUpdate());
+
         const s = await refresh();
         if (s && s.config) fillConfig(s.config);
+        setVersionLabel(s?.info?.version, null, false);
+        checkUpdate(false);      // 载入面板时静默查一下，有新版就直接弹窗
         startPoll();
     }
 

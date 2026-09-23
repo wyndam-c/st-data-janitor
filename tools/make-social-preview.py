@@ -178,7 +178,7 @@ def main():
                                              radius=26, fill=(0, 0, 0, 150))
     shadow = shadow.filter(ImageFilter.GaussianBlur(34))
 
-    cx, cy = 1027, 320
+    cx, cy = W - 74 - (w + 4) // 2, 320            # 自适应：右侧留 74px 边距
     card.alpha_composite(shadow, (cx - shadow.width // 2, cy - shadow.height // 2))
     card.alpha_composite(halo, (cx - halo.width // 2, cy - halo.height // 2))
     phone = phone.rotate(-2, resample=Image.BICUBIC, expand=True)

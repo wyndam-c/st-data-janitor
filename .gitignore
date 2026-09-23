@@ -1,0 +1,17 @@
+# 运行时生成
+plugin/config.json
+plugin/*.log
+*.log
+
+# 回收站 / 临时
+.janitor-trash/
+*.tmp
+*.tmpbreak
+*~
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+__pycache__/

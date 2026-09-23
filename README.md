@@ -315,6 +315,10 @@ git branch --set-upstream-to=origin/plugin-dist plugin-dist
 （由 `config.yaml` → `enableServerPluginsAutoUpdate: true` 控制，默认开）。
 想手动更新也行，进目录 `git pull` 即可。
 
+> 🏷️ **改版本号请用 `./bump.sh <x.y.z>`**：一条命令同步 4 处（`plugin/index.mjs`、`extension/manifest.json`、
+> README 徽章、CHANGELOG 的「未发布」小节），不用再手动找。`./bump.sh --check` 可体检版本号是否一致；
+> `./bump.sh <ver> --commit --publish` 顺手提交并生成发布分支；`GITHUB_TOKEN=xxx ./bump.sh v<ver> --release` 建 Release。
+>
 > ⚠️ **发新版时先跑 `./publish.sh`**（重新生成并推送两条发布分支），否则酒馆拉到的还是旧代码。
 >
 > 🧷 两条发布分支是**线性历史**（每次发版只是在旧 tip 上追加一个提交），因此酒馆的 `git pull`
@@ -504,6 +508,7 @@ st-data-janitor/
 │   └── screenshot-panel.jpg # 扩展面板实拍截图
 ├── install.sh               # 一键安装
 ├── publish.sh               # 生成/推送 plugin-dist、ext-dist 发布分支
+├── bump.sh                  # 版本号一次性同步（4 处）+ 体检/提交/发布
 ├── README.md
 ├── CHANGELOG.md
 └── LICENSE                  # MIT
